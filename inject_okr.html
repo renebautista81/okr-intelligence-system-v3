@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>OKR Data Injector</title>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .card {
+            background: #1e293b;
+            border-radius: 1rem;
+            padding: 2rem 3rem;
+            max-width: 600px;
+            text-align: center;
+            border: 1px solid #334155;
+        }
+
+        h1 {
+            color: #6366f1;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+
+        p {
+            color: #94a3b8;
+            line-height: 1.6;
+        }
+
+        .status {
+            margin-top: 1rem;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+        }
+
+        .success {
+            background: #064e3b;
+            border: 1px solid #10b981;
+            color: #34d399;
+        }
+
+        .error {
+            background: #450a0a;
+            border: 1px solid #ef4444;
+            color: #f87171;
+        }
+
+        .loading {
+            background: #1e1b4b;
+            border: 1px solid #6366f1;
+            color: #818cf8;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card">
+        <h1>🔄 OKR Data Injector</h1>
+        <p>Inyectando datos completos del OKR estratégico en localStorage...</p>
+        <div id="status" class="status loading">Procesando...</div>
+    </div>
+
+    <script>
+        (function () {
+            const DB_KEY = 'okr_ean_db';
+            const statusEl = document.getElementById('status');
+
+            function uid() { return 'id' + Math.random().toString(36).substr(2, 9); }
+
+            function ka(description) {
+                return {
+                    id: uid(),
+                    description,
+                    responsibleId: '',
+                    status: 'No iniciado',
+                    startDate: '2026-01-01',
+                    endDate: '2026-12-31',
+                    progress: 0,
+                    impactWeight: 25,
+                    region: 'Bogotá',
+                    notes: ''
+                };
+            }
+
+            function tkr(name, kasArr, weight) {
+                return {
+                    id: uid(),
+                    name,
+                    metric: name,
+                    formula: '—',
+                    baseline: 0,
+                    target: 100,
+                    current: 0,
+                    unit: '%',
+                    weightInPKR: weight || 20,
+                    periodicity: 'Trimestral',
+                    responsibleId: '',
+                    kas: kasArr.map(d => ka(d))
+                };
+            }
+
+            try {
+                // Read existing data
+                const raw = localStorage.getItem(DB_KEY);
+                if (!raw) {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = '❌ Error: No se encontró data en localStorage. Abre la app primero y luego regresa aquí.';
+                    return;
+                }
+
+                const data = JSON.parse(raw);
+
+                // Define complete OKR1
+                const completeOKR = {
+                    id: 'okr1',
+                    name: 'Desplegar el Modelo Ean Virtual 2.0 en las regiones de Colombia, fortaleciendo la cobertura nacional y aumentando en un 51,07% (5.227) la adquisición de esta modalidad frente a 2025',
+                    horizon: 'anual',
+                    strategicWeight: 40,
+                    responsibleUnit: 'VIA/PyC',
+                    priority: 'Crítica',
+                    color: '#6366f1',
+                    projectKRs: [
+                        // PKR 1
+                        {
+                            id: 'pkr1',
+                            name: 'Posicionar el modelo Ean Virtual como referente regional de educación de alta calidad, incrementando en 30% el índice compuesto de posicionamiento regional en 2026.',
+                            metricMain: 'Índice compuesto de posicionamiento regional',
+                            baseline: 0,
+                            target: 30,
+                            current: 0,
+                            unit: '%',
+                            verificationSource: 'Encuesta Nacional de Percepción + Rankings',
+                            indicatorType: 'Posicionamiento',
+                            weightInOKR: 20,
+                            responsibleId: 'u2',
+                            tkrs: [
+                                tkr(
+                                    'Incrementar en 25% el reconocimiento del modelo Ean Virtual en regiones priorizadas.',
+                                    [
+                                        'Diseñar y medir en pre-post los indicadores de reconocimiento del modelo Ean Virtual en regiones priorizadas',
+                                        'Gestionar participación de la Dirección de Ean Virtual en al menos 6 medios masivos nacionales y 6 regionales (prensa, radio, TV, portales especializados)',
+                                        'Gestionar participación de referentes Ean en al menos 6 medios masivos nacionales y 6 regionales (prensa, radio, TV, portales especializados)',
+                                        'Asegurar participación como ponentes en al menos 2 eventos académicos de alto impacto (nacionales o internacionales)',
+                                        'Revisar, postular y participar en rankings académicos pertinentes para los programas de modalidad virtual'
+                                    ]
+                                ),
+                                tkr(
+                                    'Consolidar 5 alianzas estratégicas B2B/B2G y ejecutar la ruta ASU–Ean 2026, con 4 iniciativas conjuntas ejecutadas.',
+                                    [
+                                        'Identificar y priorizar sectores B2B y B2G regionales con potencial de captación para los diferentes programas de modalidad virtual',
+                                        'Firmar al menos 5 acuerdos estratégicos regionales B2B/B2G con metas de matrícula asociadas',
+                                        'Ejecutar la ruta ASU–Ean 2026 Frente 1',
+                                        'Ejecutar la ruta ASU–Ean 2026 Frente 2',
+                                        'Ejecutar la ruta ASU–Ean 2026 Frente 3',
+                                        'Ejecutar la ruta ASU–Ean 2026 Frente 4'
+                                    ]
+                                ),
+                                tkr(
+                                    'Ejecutar lanzamiento nacional con 4 hitos regionales del modelo, evidenciando impactos regionales en públicos objetivos.',
+                                    [
+                                        'Diseñar y ejecutar el evento de lanzamiento nacional del modelo Ean Virtual 2.0',
+                                        'Realizar 4 eventos satélites regionales presenciales o híbridos asociados al despliegue',
+                                        'Activar campaña digital segmentada por región asociada al lanzamiento',
+                                        'Integrar cobertura en medios y ecosistema digital institucional durante el lanzamiento'
+                                    ]
+                                ),
+                                tkr(
+                                    'Optimizar estrategia de marketing alineada a metas regionales, incrementando en 2% la conversión nacional y regional de leads a matrícula.',
+                                    [
+                                        'Segmentar metas de captación por región y programa virtual, de acuerdo con oferta según producción',
+                                        'Optimizar campañas digitales regionales con seguimiento de conversión por canal',
+                                        'Implementar tablero de seguimiento regional de leads → matrícula',
+                                        'Ajustar mensajes resaltando interactividad, flexibilidad y personalización, por programa'
+                                    ]
+                                ),
+                                tkr(
+                                    'Implementar oferta flexible articulando formación formal y no formal, incrementando 15% en nuevos ingresos regionales provenientes de rutas flexibles.',
+                                    [
+                                        'Generar 15% de nuevos ingresos regionales vía oferta formal–no formal',
+                                        'Estructurar rutas de progresión no formal-formal con beneficios explícitos',
+                                        'Diseñar al menos 5 microcredenciales o cursos no formales alineados a las necesidades regionales',
+                                        'Integrar la oferta no formal en campañas regionales de captación',
+                                        'Medir ingresos derivados de rutas flexibles regionales'
+                                    ]
+                                )
+                            ]
+                        },
+                        // PKR 2
+                        {
+                            id: 'pkr2',
+                            name: 'Implementar un modelo financiero sostenible para Ean Virtual 2.0 que garantice un margen ≥65% y un EBITDA ≥28% en 2026, habilitando decisiones de crecimiento y escalabilidad institucional.',
+                            metricMain: 'Margen operativo y EBITDA',
+                            baseline: 0,
+                            target: 100,
+                            current: 0,
+                            unit: '%',
+                            verificationSource: '—',
+                            indicatorType: 'Financiero',
+                            weightInOKR: 20,
+                            responsibleId: '',
+                            tkrs: [
+                                tkr(
+                                    'Definir e implementar la estructura de ingresos, costos directos e indirectos del modelo Ean Virtual 2.0, con trazabilidad por programa en 2026.',
+                                    [
+                                        'Identificar y clasificar el 100% de los ingresos y costos asociados a producción y operación de la modalidad virtual',
+                                        'Definir modelo de costeo por programa virtual',
+                                        'Validar consistencia del modelo financiero con contabilidad institucional'
+                                    ]
+                                ),
+                                tkr(
+                                    'Alcanzar un margen ≥65% y un EBITDA ≥28% mediante control presupuestal y optimización de costos operativos en 2026.',
+                                    [
+                                        'Establecer presupuesto anual del modelo con metas mensuales de margen y EBITDA',
+                                        'Identificar y ejecutar iniciativas de optimización de costos en producción y operación',
+                                        'Implementar seguimiento mensual de desviaciones presupuestales',
+                                        'Realizar comité financiero periódico para toma de decisiones correctivas'
+                                    ]
+                                ),
+                                tkr(
+                                    'Evaluar y ajustar el modelo de pricing y estructura de oferta académica para maximizar captación sin comprometer margen en 2026.',
+                                    [
+                                        'Analizar estructura actual de precios y elasticidad por programa virtual',
+                                        'Proponer ajustes de pricing por programa',
+                                        'Monitorear impacto de ajustes en captación y margen periódicamente'
+                                    ]
+                                ),
+                                tkr(
+                                    'Diseñar y monitorear un sistema de indicadores estratégicos que visibilice la eficiencia financiera y operativa del modelo Ean Virtual 2.0 frente al modelo anterior, con seguimiento mensual en 2026.',
+                                    [
+                                        'Definir un conjunto de indicadores comparativos que midan eficiencia en producción y operación del modelo Ean Virtual 2.0 frente al modelo anterior',
+                                        'Establecer línea base histórica del modelo anterior y compararla con el modelo 2.0 para evidenciar variaciones en eficiencia',
+                                        'Integrar al menos el 80% de los indicadores de eficiencia en el tablero financiero institucional con actualización mensual',
+                                        'Utilizar los indicadores de eficiencia como criterio obligatorio en decisiones de expansión, inversión y optimización operativa'
+                                    ]
+                                )
+                            ]
+                        },
+                        // PKR 3
+                        {
+                            id: 'pkr3',
+                            name: 'Desplegar de manera integral el modelo Ean Virtual 2.0 en los procesos de diseño, producción y mejora continua en el 100% de los AVE de los programas virtuales.',
+                            metricMain: '% de AVE con modelo 2.0 implementado',
+                            baseline: 0,
+                            target: 100,
+                            current: 0,
+                            unit: '%',
+                            verificationSource: '—',
+                            indicatorType: 'Producción',
+                            weightInOKR: 20,
+                            responsibleId: '',
+                            tkrs: [
+                                tkr(
+                                    'Culminar la implementación del modelo Ean Virtual 2.0 en el 100% de los programas académicos virtuales.',
+                                    [
+                                        'Desarrollar los AVE proyectados para la prioridad 1',
+                                        'Desarrollar los AVE proyectados para la prioridad 2',
+                                        'Desarrollar los AVE proyectados para la prioridad 3',
+                                        'Desarrollar los AVE proyectados para la prioridad 4',
+                                        'Desarrollar los AVE proyectados para la prioridad 5'
+                                    ]
+                                ),
+                                tkr(
+                                    'Actualizar el 100% de los AVE existentes para asegurar su calidad y alineación con el modelo Ean Virtual 2.0 y lineamientos institucionales.',
+                                    [
+                                        'Definir, implementar y evaluar criterios de calidad y mejora continua para los ambientes virtuales, que orienten ajustes iterativos para su optimización permanente',
+                                        'Realizar la actualización de los AVE proyectados para la prioridad 1',
+                                        'Realizar la actualización de los AVE proyectados para la prioridad 2',
+                                        'Realizar la actualización de los AVE proyectados para la prioridad 3',
+                                        'Realizar la actualización de los AVE proyectados para la prioridad 4',
+                                        'Realizar la actualización de los AVE proyectados para la prioridad 5'
+                                    ]
+                                ),
+                                tkr(
+                                    'Incrementar la capacidad tecnológica del sistema de producción de AVE en 2026, reduciendo en un 25% el tiempo promedio de desarrollo e integrando innovaciones pedagógicas digitales en al menos el 70% de los AVE producidos.',
+                                    [
+                                        'Mapear, optimizar y estandarizar el flujo completo de producción de AVE',
+                                        'Diseñar e implementar un agente IA que automatice tareas críticas del proceso de producción',
+                                        'Reducir progresivamente el tiempo promedio de producción de 8 a 6 semanas en 2026',
+                                        'Evaluar, seleccionar e integrar innovaciones pedagógicas digitales emergentes al flujo oficial de producción',
+                                        'Integrar la fase piloto del monitor virtual con IA en los procesos de producción de AVE'
+                                    ]
+                                ),
+                                tkr(
+                                    'Lograr que al menos el 85% de los actores clave adopten y apliquen correctamente el modelo de producción 2026 en sus procesos, garantizando su implementación integral durante 2026.',
+                                    [
+                                        'Promover la conciencia efectiva del modelo de producción 2026 en los actores clave mediante la aplicación de un instrumento de validación de comprensión e impacto del cambio',
+                                        'Lograr que el 75% de los actores clave manifiesten disposición positiva hacia el nuevo modelo en encuesta de percepción',
+                                        'Asegurar que el 90% de los actores clave demuestren la comprensión del modelo de producción 2026',
+                                        'Certificar al 85% de los actores clave en la aplicación práctica del modelo 2026',
+                                        'Implementar un sistema formal de reforzamiento que incluya medición de desempeño, reconocimiento visible, retroalimentación estructurada y rendición de cuentas'
+                                    ]
+                                ),
+                                tkr(
+                                    'Implementar un sistema integral de gestión documental del modelo Ean Virtual 2.0 que garantice trazabilidad, control de versiones y acceso unificado en el 100% de los procesos académicos y de producción durante 2026.',
+                                    [
+                                        'Identificar y documentar el 100% de los procesos de producción asociados al modelo',
+                                        'Diseñar e implementar una arquitectura documental institucional con control de versiones, responsables y flujos de aprobación',
+                                        'Implementar un repositorio digital único con acceso controlado y trazabilidad de cambios',
+                                        'Formalizar lineamientos institucionales de actualización, revisión y archivo documental'
+                                    ]
+                                )
+                            ]
+                        },
+                        // PKR 4
+                        {
+                            id: 'pkr4',
+                            name: 'Garantizar la implementación consistente y de alta calidad del modelo Ean Virtual 2.0 en el 100% de los programas académicos durante 2026, conforme a estándares institucionales definidos.',
+                            metricMain: 'Índice de calidad e implementación',
+                            baseline: 0,
+                            target: 100,
+                            current: 0,
+                            unit: '%',
+                            verificationSource: '—',
+                            indicatorType: 'Calidad Académica',
+                            weightInOKR: 20,
+                            responsibleId: '',
+                            tkrs: [
+                                tkr(
+                                    'Alcanzar un índice de satisfacción estudiantil ≥85% en los programas operando bajo el modelo Ean Virtual 2.0 en 2026.',
+                                    [
+                                        'Aplicar un instrumento estandarizado de medición de satisfacción estudiantil al cierre de cada periodo académico en el 100% de los programas virtuales',
+                                        'Realizar análisis trimestral de resultados de satisfacción, identificando brechas críticas y priorizando al menos tres oportunidades de mejora por periodo',
+                                        'Implementar planes de mejora derivados del análisis de satisfacción en al menos el 80% de las brechas críticas identificadas'
+                                    ]
+                                ),
+                                tkr(
+                                    'Lograr que el 100% de los tutores vinculados en 2026 cumplan con el perfil y proceso de habilitación alineado al modelo Ean Virtual 2.0.',
+                                    [
+                                        'Diseñar y aprobar el perfil integral del tutor Ean Virtual 2.0, especificando competencias pedagógicas, tecnológicas y de acompañamiento, con criterios observables de evaluación',
+                                        'Implementar el proceso de selección y contratación de tutores conforme al perfil definido, asegurando que el 100% de los nuevos tutores cumplan los criterios establecidos',
+                                        'Establecer un proceso formal de habilitación técnica y pedagógica obligatoria para el 100% de los tutores antes de su asignación a AVE en 2026',
+                                        'Realizar verificación periódica del cumplimiento del perfil tutoral mediante evaluación de desempeño alineada al modelo'
+                                    ]
+                                ),
+                                tkr(
+                                    'Incrementar en un 15% los indicadores de acompañamiento estudiantil mediante la integración de soluciones tecnológicas e IA en la gestión tutorial durante 2026.',
+                                    [
+                                        'Realizar un diagnóstico estructurado de oportunidades de automatización y analítica con TIC e IA en el acompañamiento, seguimiento académico y gestión tutorial',
+                                        'Diseñar e implementar al menos 2 pilotos de soluciones TIC e IA con métricas de éxito definidas para mejorar tiempos de respuesta, seguimiento a estudiantes en riesgo y trazabilidad tutorial',
+                                        'Desarrollar e implementar en fase piloto un monitor virtual con IA para seguimiento de calidad, avance y desempeño de AVE',
+                                        'Escalar las soluciones TIC e IA que demuestren impacto positivo a al menos el 50% de los programas virtuales durante 2026',
+                                        'Medir el impacto de las soluciones implementadas logrando un incremento mínimo del 15% en indicadores clave de acompañamiento (frecuencia de interacción, tiempo de respuesta, retención o permanencia estudiantil)'
+                                    ]
+                                ),
+                                tkr(
+                                    'Implementar al menos una iniciativa de interactividad con el contexto y la comunidad por programa virtual en 2026.',
+                                    [
+                                        'Definir y formalizar el marco de interactividad integral del modelo Ean Virtual 2.0, especificando tipologías de iniciativas y criterios mínimos de calidad en la operación académica',
+                                        'Diseñar un portafolio institucional de iniciativas diferenciadoras en al menos cuatro dimensiones estratégicas (investigación, retos, emprendimiento, internacionalización, bienestar o vinculación académica)',
+                                        'Implementar al menos una iniciativa de interactividad contextual por programa virtual en 2026',
+                                        'Alcanzar una participación mínima del 40% de estudiantes activos en las iniciativas implementadas por programa',
+                                        'Evaluar el impacto de las iniciativas en la percepción de conexión con el contexto y comunidad, logrando una valoración ≥85% en encuesta de experiencia'
+                                    ]
+                                ),
+                                tkr(
+                                    'Garantizar que el 100% de los programas operen bajo versiones curriculares validadas y formalmente aprobadas en 2026.',
+                                    [
+                                        'Realizar un diagnóstico integral del 100% de los syllabus y matrices de congruencia vigentes en los programas virtuales antes del cierre del primer semestre de 2026',
+                                        'Regularizar el 100% de los syllabus mediante control de versiones y definición de una versión oficial vigente por programa',
+                                        'Implementar un flujo formal y estandarizado de actualización y aprobación curricular aplicable al 100% de los programas virtuales'
+                                    ]
+                                ),
+                                tkr(
+                                    'Lograr que al menos el 90% de los actores académicos apliquen consistentemente el modelo Ean Virtual 2.0 en su práctica durante 2026.',
+                                    [
+                                        'Garantizar que el 100% de los actores académicos conozcan los principios, roles y expectativas del modelo Ean Virtual 2.0 mediante comunicación estructurada y validación de comprensión',
+                                        'Implementar estrategias de involucramiento que logren que al menos el 75% de los actores académicos manifiesten disposición positiva hacia la aplicación del modelo',
+                                        'Asegurar que el 90% de los actores académicos demuestren comprensión operativa del modelo mediante evaluación posterior a sesiones técnicas',
+                                        'Lograr que al menos el 90% de los actores académicos evidencien aplicación correcta del modelo durante 2026',
+                                        'Implementar un sistema formal de reforzamiento que incluya medición de desempeño, reconocimiento visible, retroalimentación estructurada y rendición de cuentas'
+                                    ]
+                                ),
+                                tkr(
+                                    'Implementar un sistema integral de gestión documental del modelo Ean Virtual 2.0 que garantice trazabilidad, control de versiones y acceso unificado en el 100% de los procesos de operación académica durante 2026.',
+                                    [
+                                        'Identificar y documentar el 100% de los procesos de operación académica asociados al modelo',
+                                        'Diseñar e implementar una arquitectura documental institucional con control de versiones, responsables y flujos de aprobación',
+                                        'Implementar un repositorio digital único con acceso controlado y trazabilidad de cambios',
+                                        'Formalizar lineamientos institucionales de actualización, revisión y archivo documental'
+                                    ]
+                                )
+                            ]
+                        },
+                        // PKR 5
+                        {
+                            id: 'pkr5',
+                            name: 'Garantizar una arquitectura tecnológica escalable que soporte el 100% de la producción y operación del modelo Ean Virtual 2.0 en 2026.',
+                            metricMain: 'Índice de soporte tecnológico',
+                            baseline: 0,
+                            target: 100,
+                            current: 0,
+                            unit: '%',
+                            verificationSource: '—',
+                            indicatorType: 'Tecnológico',
+                            weightInOKR: 20,
+                            responsibleId: '',
+                            tkrs: [
+                                tkr(
+                                    'Asegurar que el 100% de los procesos críticos de producción y operación del modelo Ean Virtual 2.0 estén soportados por soluciones tecnológicas formalmente definidas y operativas en 2026.',
+                                    [
+                                        'Identificar y validar el 100% de los procesos críticos de producción y operación del modelo Ean Virtual 2.0 que requieren soporte tecnológico',
+                                        'Evaluar el nivel de soporte tecnológico existente para cada proceso crítico identificado, determinando brechas funcionales',
+                                        'Definir requerimientos tecnológicos específicos para cubrir las brechas detectadas en los procesos críticos',
+                                        'Implementar o ajustar soluciones tecnológicas para cubrir al menos el 100% de los procesos críticos definidos',
+                                        'Establecer un mecanismo de monitoreo semestral que verifique que los procesos críticos continúan con soporte tecnológico efectivo'
+                                    ]
+                                ),
+                                tkr(
+                                    'Implementar una hoja de ruta funcional de evolución tecnológica del modelo Ean Virtual 2.0, ejecutando al menos el 80% de las mejoras priorizadas para 2026.',
+                                    [
+                                        'Diseñar y aprobar una hoja de ruta anual de evolución tecnológica del modelo Ean Virtual 2.0, priorizada según impacto académico, escalabilidad y experiencia del usuario',
+                                        'Ejecutar al menos el 80% de las mejoras tecnológicas priorizadas en la hoja de ruta 2026',
+                                        'Realizar validación funcional y medición de experiencia de usuario para cada mejora implementada antes de su despliegue definitivo',
+                                        'Monitorear el impacto de las mejoras implementadas y realizar ajustes iterativos cuando se identifiquen desviaciones funcionales'
+                                    ]
+                                ),
+                                tkr(
+                                    'Garantizar que el 80% de los indicadores estratégicos del modelo Ean Virtual 2.0 cuenten con medición automatizada y visualización institucional en 2026.',
+                                    [
+                                        'Definir y validar el listado oficial de indicadores estratégicos del modelo Ean Virtual 2.0 priorizando aquellos críticos para producción, operación y crecimiento regional',
+                                        'Implementar mecanismos de integración y automatización de datos para al menos el 80% de los KPIs definidos en 2026',
+                                        'Desplegar dashboards ejecutivos y operativos con actualización periódica para la toma de decisiones en el modelo Ean Virtual 2.0',
+                                        'Establecer espacios formales de revisión y toma de decisiones basados en los dashboards al menos una vez por trimestre'
+                                    ]
+                                ),
+                                tkr(
+                                    'Alcanzar un índice de satisfacción ≥85% en el soporte tecnológico asociado a la producción y operación del modelo Ean Virtual 2.0 en 2026.',
+                                    [
+                                        'Definir y formalizar el modelo de soporte tecnológico para producción y operación del modelo Ean Virtual 2.0, incluyendo niveles de servicio (SLA), tiempos de respuesta y canales oficiales de atención',
+                                        'Implementar y formalizar herramientas de registro y seguimiento de solicitudes e incidencias tecnológicas asociadas al modelo',
+                                        'Garantizar que al menos el 90% de las solicitudes tecnológicas se atiendan dentro de los tiempos definidos en los SLA establecidos',
+                                        'Aplicar medición trimestral de satisfacción del servicio de soporte y ejecutar acciones de mejora cuando el índice sea inferior al 85%'
+                                    ]
+                                ),
+                                tkr(
+                                    'Lograr que al menos el 85% de los actores institucionales clave demuestren competencia operativa en el uso del ecosistema tecnológico del modelo Ean Virtual 2.0 en 2026.',
+                                    [
+                                        'Diseñar y aprobar el marco de competencias tecnológicas requeridas para actores institucionales clave (tutores, directores, producción, coordinación académica)',
+                                        'Aplicar una evaluación diagnóstica de competencias digitales al 100% de los actores institucionales clave en 2026',
+                                        'Desarrollar e implementar un plan de habilitación tecnológica focalizado en las brechas identificadas, priorizando roles críticos del modelo',
+                                        'Validar que al menos el 85% de los actores institucionales clave demuestren competencia operativa en el uso del ecosistema TIC mediante evaluación práctica o evidencia de uso activo'
+                                    ]
+                                )
+                            ]
+                        }
+                    ]
+                };
+
+                // Replace or insert OKR1
+                const idx = data.okrs.findIndex(o => o.id === 'okr1');
+                if (idx !== -1) {
+                    data.okrs[idx] = completeOKR;
+                } else {
+                    data.okrs.unshift(completeOKR);
+                }
+
+                // Save back
+                localStorage.setItem(DB_KEY, JSON.stringify(data));
+
+                // Count stats
+                const pkrCount = completeOKR.projectKRs.length;
+                const tkrCount = completeOKR.projectKRs.reduce((s, p) => s + p.tkrs.length, 0);
+                const kaCount = completeOKR.projectKRs.reduce((s, p) => s + p.tkrs.reduce((ss, t) => ss + t.kas.length, 0), 0);
+
+                statusEl.className = 'status success';
+                statusEl.innerHTML = `✅ Datos inyectados exitosamente!<br><br>
+        📊 <strong>${pkrCount} KRs Estratégicos</strong> | 
+        🎯 <strong>${tkrCount} KRs Tácticos</strong> | 
+        ⚡ <strong>${kaCount} Acciones Clave</strong><br><br>
+        <em>Redirigiendo a la app en 2 segundos...</em>`;
+
+                setTimeout(() => {
+                    window.location.href = 'index.html';
+                }, 2000);
+
+            } catch (e) {
+                statusEl.className = 'status error';
+                statusEl.textContent = '❌ Error: ' + e.message;
+            }
+        })();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,25 @@
+# Dependencias y archivos temporales
+node_modules/
+.DS_Store
+*.log
+tmp/
+
+# Archivos de Excel de migración (si prefieres no subirlos)
+*.xlsx
+*.xls
+
+# Scripts de automatización locales
+*.command
+fix.py
+fix2.py
+patch2.py
+refactor.py
+
+# Datos dinámicos locales (si se guardan en archivos JSON locales en lugar de localStorage)
+data_granular.json
+data_new.json
+
+# Entorno local
+.env
+.env.local
+.vercel
