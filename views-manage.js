@@ -660,6 +660,17 @@ window.addSharePKR = function (okrId, pkrId) {
   const permName = permSelect.options[permSelect.selectedIndex].text;
 
   DB.update(data => {
+    // 1. Add to global users if not exists
+    if (!data.users.find(u => u.email === email)) {
+      data.users.push({
+        id: 'u_' + Utils.uuid().substring(0, 8),
+        name: email.split('@')[0],
+        role: permVal === 'view' ? 'viewer' : 'tkr_owner', // default role mapping
+        email: email
+      });
+    }
+
+    // 2. Add to PKR shares
     data.okrs.forEach(o => {
       if (o.id === okrId) {
         o.projectKRs.forEach(p => {
