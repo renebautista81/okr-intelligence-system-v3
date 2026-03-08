@@ -673,13 +673,18 @@ window.addSharePKR = function (okrId, pkrId) {
     });
   });
 
-  showToast('Acceso compartido con ' + email, 'success');
+  // ── Trigger mailto invitation ────────────────
+  const subject = encodeURIComponent('Invitación: Colaborar en OKR Intelligence System');
+  const body = encodeURIComponent(`Hola,\n\nTe han invitado a colaborar en el KR Estratégico del proyecto OKR Intelligence System.\n\nNivel de permiso: ${permName}\n\nPuedes acceder aquí: ${window.location.href}\n\nSaludos.`);
+  window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
+
+  showToast('Sincronizando con Firestore e iniciando correo...', 'success');
   openSharePKR(okrId, pkrId);
   if (typeof renderManage === 'function') renderManage(document.getElementById('page-content'));
 };
 
 window.removeSharePKR = function (okrId, pkrId, email) {
-  if(!confirm('¿Revocar el acceso a ' + email + '?')) return;
+  if (!confirm('¿Revocar el acceso a ' + email + '?')) return;
   DB.update(data => {
     data.okrs.forEach(o => {
       if (o.id === okrId) {
