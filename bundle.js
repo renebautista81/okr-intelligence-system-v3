@@ -2293,6 +2293,65 @@ const DB = (() => {
   return { get, load, save, update, reset, subscribeToChanges };
 })();
 
+// ── Auth & Permissions ────────────────────────
+const Auth = {
+  isViewer() {
+    const user = AppState.currentUser;
+    return !user || user.role === 'viewer';
+  },
+
+  getPermissionForPKR(pkrId) {
+    const data = DB.get();
+    const user = AppState.currentUser;
+    if (!user) return 'view';
+    if (user.role === 'admin') return 'edit1'; // Admin has full power
+    if (user.role === 'viewer') return 'view';  // Viewers never edit
+
+    // Check individual PKR shares first
+    let effectivePerm = 'view';
+    data.okrs.forEach(o => o.projectKRs.forEach(p => {
+      if (p.id === pkrId && p.shares) {
+        const share = p.shares.find(s => s.email === user.email);
+        if (share) effectivePerm = share.permission;
+      }
+    }));
+
+    // If no explicit share, grant role-based permissions
+    if (effectivePerm === 'view') {
+      if (user.role === 'project_lead') effectivePerm = 'edit1';
+      else if (user.role === 'tkr_owner') effectivePerm = 'edit2';
+      else if (user.role === 'ka_owner') effectivePerm = 'edit3';
+    }
+    return effectivePerm;
+  },
+
+  canEdit(level, pkrId) {
+    const user = AppState.currentUser;
+    if (!user || user.role === 'viewer') return false;
+    const perm = this.getPermissionForPKR(pkrId);
+    if (perm === 'edit1') return true;
+    if (perm === 'edit2' && (level === 2 || level === 3)) return true;
+    if (perm === 'edit3' && level === 3) return true;
+    return false;
+  },
+
+  requireEdit(pkrId, level = 3) {
+    if (!this.canEdit(level, pkrId)) {
+      showToast('Acceso denegado: permisos insuficientes', 'error');
+      return false;
+    }
+    return true;
+  },
+
+  requireNotViewer() {
+    if (this.isViewer()) {
+      showToast('Acceso denegado: los visualizadores no pueden editar', 'error');
+      return false;
+    }
+    return true;
+  }
+};
+
 // ── Calculation engine ────────────────────────
 const Calc = {
   kaProgress(ka) {
@@ -3122,7 +3181,6 @@ function renderManage(container) {
       <td style="font-size:12px">${okr.responsibleUnit}</td>
       <td><span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:100px;background:${Utils.priorityColor[okr.priority]}22;color:${Utils.priorityColor[okr.priority]}">${okr.priority}</span></td>
       <td><strong>${op.toFixed(0)}%</strong></td>
-      <td><span class="tl-badge ${Calc.trafficLight(op)}"><span class="dot"></span>${Calc.trafficLightLabel(op)}</span></td>
       <td style="white-space:nowrap">
         <label class="btn btn-ghost btn-sm" style="cursor:pointer; color:#10b981" title="Importar Excel a este OKR">📥 Excel
             <input type="file" style="display:none" accept=".xlsx, .xls" onchange="importExcelToOkr(event, '${okr.id}')">
@@ -3143,7 +3201,6 @@ function renderManage(container) {
         <td style="font-size:12px">${Utils.findUser(data, pkr.responsibleId).name.split(' ')[0]}</td>
         <td style="font-size:12px">Peso: ${pkr.weightInOKR}%</td>
         <td><strong>${pp.toFixed(0)}%</strong></td>
-        <td><span class="tl-badge ${Calc.trafficLight(pp)}"><span class="dot"></span>${Calc.trafficLightLabel(pp)}</span></td>
         <td style="white-space:nowrap">
           <button class="btn btn-ghost btn-sm" style="color:#0ea5e9" onclick="openSharePKR('${okr.id}','${pkr.id}')">🔗 Compartir</button>
           <button class="btn btn-ghost btn-sm" onclick="openPKREdit('${pkr.id}')">✎ Editar</button>
@@ -3162,7 +3219,6 @@ function renderManage(container) {
           <td style="font-size:12px">${Utils.findUser(data, tkr.responsibleId).name.split(' ')[0]}</td>
           <td style="font-size:12px">Peso: ${tkr.weightInPKR}%</td>
           <td><strong>${tp.toFixed(0)}%</strong></td>
-          <td><span class="tl-badge ${Calc.trafficLight(tp)}"><span class="dot"></span>${Calc.trafficLightLabel(tp)}</span></td>
           <td style="white-space:nowrap">
             <button class="btn btn-ghost btn-sm" onclick="openTKREdit('${pkr.id}','${tkr.id}')">✎ Editar</button>
             <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteTKR('${pkr.id}','${tkr.id}')">✕</button>
@@ -3187,7 +3243,6 @@ function renderManage(container) {
                 <strong style="font-size:11px">${ka.progress}%</strong>
               </div>
             </td>
-            <td></td>
             <td style="white-space:nowrap">
               <button class="btn btn-ghost btn-sm" onclick="openKAEdit('${ka.id}')">✎ Editar</button>
               <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteKA('${tkr.id}','${ka.id}')">✕</button>
@@ -3255,7 +3310,7 @@ function renderManage(container) {
         <table class="data-table">
           <thead><tr>
             <th>Nivel</th><th>Nombre / Descripción</th><th>Tipo / Estado</th>
-            <th>Responsable</th><th>Peso / Fecha</th><th>Progreso / Actual</th><th>Semáforo</th><th>Acciones</th>
+            <th>Responsable</th><th>Peso / Fecha</th><th>Progreso / Actual</th><th>Acciones</th>
           </tr></thead>
           <tbody>${rows.join('')}</tbody>
         </table>
@@ -3705,7 +3760,6 @@ function openSharePKR(okrId, pkrId) {
   data.okrs.forEach(o => { if (o.id === okrId) { o.projectKRs.forEach(p => { if (p.id === pkrId) pkr = p; }) } });
   if (!pkr) return;
 
-  // Create sharing array if it doesn't exist yet
   if (!pkr.shares) pkr.shares = [];
 
   const permOpts = [
@@ -3716,10 +3770,20 @@ function openSharePKR(okrId, pkrId) {
   ].map(o => `<option value="${o.val}">${o.label}</option>`).join('');
 
   const sharesList = pkr.shares.length === 0 ? '<p style="font-size:12px;color:var(--text-3);font-style:italic">No compartido aún.</p>' :
-    pkr.shares.map(s => `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border); font-size:12px">
-        <span><strong>${s.email}</strong> <span style="color:var(--text-3)">(${s.permissionName})</span></span>
-        <button class="btn btn-ghost btn-sm" style="color:var(--red); padding:0" onclick="removeSharePKR('${okrId}', '${pkrId}', '${s.email}')">Eliminar</button>
-    </div>`).join('');
+    pkr.shares.map(s => {
+      const baseUrl = window.location.href.split('?')[0];
+      const remoteLink = `${baseUrl}?u=${encodeURIComponent(s.email)}`;
+      return `<div style="padding:10px 0; border-bottom:1px solid var(--border); font-size:12px">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px">
+            <span><strong>${s.email}</strong> <span style="color:var(--text-3)">(${s.permissionName})</span></span>
+            <button class="btn btn-ghost btn-sm" style="color:var(--red); padding:0" onclick="removeSharePKR('${okrId}', '${pkrId}', '${s.email}')">Eliminar</button>
+        </div>
+        <div style="background:var(--surface-1); padding:6px; border-radius:4px; font-family:monospace; font-size:10px; word-break:break-all; border:1px dashed var(--border)">
+            ${remoteLink}
+        </div>
+        <div style="margin-top:4px"><a href="${remoteLink}" target="_blank" style="font-size:10px; color:var(--brand-primary)">Probar acceso ↗</a></div>
+      </div>`;
+    }).join('');
 
   Modal.open('Compartir KR Estratégico', `
     <p style="font-size:12.5px;color:var(--text-2);margin-bottom:16px"><strong>${pkr.name}</strong></p>
@@ -3729,10 +3793,10 @@ function openSharePKR(okrId, pkrId) {
         <input type="email" class="form-control" id="share-email" placeholder="usuario@ean.edu.co"></div>
         <div class="form-group" style="margin-bottom:10px"><label class="form-label">Permisos</label>
         <select class="form-control" id="share-perm">${permOpts}</select></div>
-        <button class="btn btn-primary btn-sm" style="width:100%" onclick="addSharePKR('${okrId}', '${pkrId}')">Invitar por correo</button>
+        <button class="btn btn-primary btn-sm" style="width:100%" onclick="addSharePKR('${okrId}', '${pkrId}')">Invitar y crear enlace</button>
     </div>
 
-    <div class="form-group"><label class="form-label">Acceso actual</label>
+    <div class="form-group"><label class="form-label">Accesos y Enlaces Remotos</label>
         <div id="pkr-shares-list">${sharesList}</div>
     </div>`,
     `<button class="btn btn-secondary" onclick="Modal.close()">Cerrar</button>`);
@@ -3908,6 +3972,7 @@ function openNewCheckin() {
 }
 
 function saveCheckin() {
+  if (!Auth.requireNotViewer()) return;
   DB.update(data => {
     data.checkins.push({
       id: Utils.uuid(), date: Utils.today(), type: 'weekly',
@@ -3923,6 +3988,7 @@ function saveCheckin() {
 
 function renderDecisions(container) {
   const data = DB.get();
+  const isAdmin = AppState.currentUser && AppState.currentUser.role === 'admin';
   const items = [...data.decisions]
     .filter(d => AppState.activeOkrId === 'all' || d.relatedOKR === AppState.activeOkrId)
     .reverse().map(d => {
@@ -3931,7 +3997,10 @@ function renderDecisions(container) {
       return `<div class="decision-item">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:6px">
         <div class="dec-title">${d.title}</div>
-        <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:100px;background:${Utils.priorityColor[d.priority]}22;color:${Utils.priorityColor[d.priority]};white-space:nowrap">${d.priority}</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:100px;background:${Utils.priorityColor[d.priority]}22;color:${Utils.priorityColor[d.priority]};white-space:nowrap">${d.priority}</span>
+          ${isAdmin ? `<button class="btn btn-ghost btn-sm" style="color:var(--red);padding:2px 6px;font-size:11px" onclick="deleteDecision('${d.id}')" title="Eliminar decision">✕</button>` : ''}
+        </div>
       </div>
       <div class="dec-body">${d.body}</div>
       <div class="dec-meta">
@@ -3943,9 +4012,19 @@ function renderDecisions(container) {
   container.innerHTML = `
     <div class="section-header">
       <div><div class="section-title">Registro de Decisiones Estratégicas</div><div class="section-sub">Trazabilidad histórica</div></div>
-      <button class="btn btn-primary btn-sm" onclick="openNewDecision()">+ Nueva Decisión</button>
+      ${!Auth.isViewer() ? `<button class="btn btn-primary btn-sm" onclick="openNewDecision()">+ Nueva Decisión</button>` : ''}
     </div>
-    <div class="card"><div class="card-body">${items}</div></div>`;
+    <div class="card"><div class="card-body">${items || '<div class="empty-state"><div class="es-icon">◉</div><div class="es-title">Sin decisiones registradas</div></div>'}</div></div>`;
+}
+
+function deleteDecision(decisionId) {
+  if (!Auth.requireNotViewer()) return;
+  if (!confirm('¿Eliminar esta decisión? Esta acción no se puede deshacer.')) return;
+  DB.update(data => {
+    data.decisions = data.decisions.filter(d => d.id !== decisionId);
+  });
+  showToast('Decisión eliminada');
+  renderDecisions(document.getElementById('page-content'));
 }
 
 function openNewDecision() {
@@ -3968,6 +4047,7 @@ function openNewDecision() {
 }
 
 function saveDecision() {
+  if (!Auth.requireNotViewer()) return;
   DB.update(data => {
     data.decisions.push({
       id: Utils.uuid(), date: Utils.today(),
@@ -4059,7 +4139,7 @@ function renderGovernance(container) {
         <div class="role-label">${Utils.roleLabel[u.role]} · ${u.email}</div>
         <div class="role-perms" style="margin-top:6px">${perms}</div>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="showToast('Funcionalidad de edición de usuarios disponible en v2.1','info')">✎</button>
+      <button class="btn btn-ghost btn-sm" onclick="openEditUser('${u.id}')" title="Editar usuario">✎</button>
     </div>`;
   }).join('');
 
@@ -4124,10 +4204,48 @@ function switchUser(userId) {
   const user = data.users.find(u => u.id === userId);
   if (user) {
     AppState.currentUser = user;
+    localStorage.setItem('currentUser', JSON.stringify(user));
     showToast(`Sesión cambiada a: ${user.name}`);
     renderSidebar();
     renderGovernance(document.getElementById('page-content'));
   }
+}
+
+function openEditUser(userId) {
+  if (AppState.currentUser.role !== 'admin') { showToast('Solo administradores pueden editar usuarios', 'error'); return; }
+  const data = DB.get();
+  const u = data.users.find(x => x.id === userId);
+  if (!u) return;
+  const roleOpts = ['admin', 'project_lead', 'tkr_owner', 'ka_owner', 'viewer']
+    .map(r => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${Utils.roleLabel[r] || r}</option>`).join('');
+  Modal.open('Editar Usuario', `
+    <div class="form-group"><label class="form-label">Nombre completo</label>
+      <input type="text" class="form-control" id="eu-name" value="${u.name}"></div>
+    <div class="form-group"><label class="form-label">Correo electrónico</label>
+      <input type="email" class="form-control" id="eu-email" value="${u.email}"></div>
+    <div class="form-group"><label class="form-label">Rol</label>
+      <select class="form-control" id="eu-role">${roleOpts}</select></div>`,
+    `<button class="btn btn-secondary" onclick="Modal.close()">Cancelar</button>
+     <button class="btn btn-primary" onclick="saveEditUser('${userId}')">Guardar cambios</button>`);
+}
+
+function saveEditUser(userId) {
+  if (AppState.currentUser.role !== 'admin') { showToast('Acceso denegado', 'error'); return; }
+  const name = document.getElementById('eu-name')?.value.trim();
+  const email = document.getElementById('eu-email')?.value.trim();
+  const role = document.getElementById('eu-role')?.value;
+  if (!name || !email) { showToast('Nombre y correo son requeridos', 'error'); return; }
+  DB.update(data => {
+    const u = data.users.find(x => x.id === userId);
+    if (u) { u.name = name; u.email = email; u.role = role; }
+  });
+  if (AppState.currentUser.id === userId) {
+    AppState.currentUser = DB.get().users.find(u => u.id === userId);
+    localStorage.setItem('currentUser', JSON.stringify(AppState.currentUser));
+    renderSidebar();
+  }
+  Modal.close(); showToast('Usuario actualizado ✓');
+  renderGovernance(document.getElementById('page-content'));
 }
 
 // ── Export View ───────────────────────────────
@@ -4547,10 +4665,12 @@ function renderSidebar() {
   // Footer
   const roleColors = { admin: '#6366f1', project_lead: '#10b981', tkr_owner: '#f59e0b', ka_owner: '#06b6d4', viewer: '#94a3b8' };
   document.getElementById('sidebar-footer').innerHTML = `
-                <div class="avatar" style="background:${roleColors[user.role] || '#6366f1'}">${user.name.split(' ').map(w => w[0]).slice(0, 2).join('')}</div>
+    <div class="avatar" style="background:${roleColors[user.role] || '#6366f1'}">${user.name.split(' ').map(w => w[0]).slice(0, 2).join('')}</div>
     <div class="user-info">
       <div class="user-name">${user.name}</div>
-      <div class="user-role">${Utils.roleLabel[user.role]}</div>
+      <select class="user-role-switcher" onchange="AppState.currentUser = DB.get().users.find(u=>u.id===this.value); renderSidebar(); renderPage(AppState.currentPage);" style="background:transparent; border:none; color:var(--text-4); font-size:10px; cursor:pointer; width:100%">
+        ${data.users.map(u => `<option value="${u.id}" ${u.id === user.id ? 'selected' : ''}>${Utils.roleLabel[u.role] || u.role} (${u.name})</option>`).join('')}
+      </select>
     </div>
     <div class="role-dot"></div>`;
 
@@ -4657,7 +4777,47 @@ async function init() {
     switcher.value = AppState.activeOkrId;
   }
 
-  AppState.currentUser = data.users[0]; // admin by default
+  // 3. IDENTIFICACION DE USUARIO (Persistencia y Acceso Remoto)
+  let user = null;
+  const params = new URLSearchParams(window.location.search);
+  const userParam = params.get('u');
+
+  if (userParam) {
+    // Intenta loguear por URL (Acceso Remoto)
+    user = data.users.find(u => u.email === userParam || u.id === userParam);
+    if (!user) {
+      // Si no es un usuario interno, verificar si tiene algún KR compartido
+      let hasShare = false;
+      data.okrs.forEach(o => o.projectKRs.forEach(p => {
+        if (p.shares && p.shares.find(s => s.email === userParam)) hasShare = true;
+      }));
+      if (hasShare) {
+        user = { id: 'guest-' + Utils.uuid(), name: userParam.split('@')[0], role: 'viewer', email: userParam, isGuest: true };
+      }
+    }
+
+    if (user) {
+      localStorage.setItem('currentUser', JSON.stringify(user));
+      // Limpiar URL para no dejar el correo expuesto innecesariamente
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }
+
+  if (!user) {
+    // Intenta recuperar de persistencia local
+    const saved = localStorage.getItem('currentUser');
+    if (saved) {
+      try { user = JSON.parse(saved); } catch (e) { }
+    }
+  }
+
+  // Fallback final: Si no hay usuario, poner Rector (u5/viewer) o el primero si no existe u5.
+  if (!user) {
+    user = data.users.find(u => u.id === 'u5') || data.users[4] || data.users[0];
+  }
+
+  AppState.currentUser = user;
+
   Modal.init();
   renderSidebar();
   renderPage('dashboard');
@@ -4945,7 +5105,12 @@ function renderOKRTree(container) {
             <div class="ka-mini-bar"><div class="ka-mini-bar-fill" style="width:${ka.progress}%;background:${barColor}"></div></div>
             <span class="ka-pct-val">${ka.progress}%</span>
           </div>
-          <button class="ka-btn" onclick="openKAEdit('${ka.id}')">Editar</button>
+          ${(() => {
+          const data = DB.get();
+          let pkrId = null;
+          data.okrs.forEach(o => o.projectKRs.forEach(p => { if (p.tkrs.find(t => t.id === tkrId)) pkrId = p.id; }));
+          return Auth.canEdit(3, pkrId) ? `<button class="ka-btn" onclick="openKAEdit('${ka.id}')">Editar</button>` : '';
+        })()}
         </div>
       </div>`;
     }).join('')}</div>`;
@@ -5239,7 +5404,10 @@ function renderHeatmapPage(container) {
     const trend = rd.trend;
     const delta = trend.length >= 2 ? trend[trend.length - 1] - trend[trend.length - 2] : 0;
     return `<div class="heatmap-cell ${cls}" style="padding:20px 18px">
-      <div class="heatmap-region" style="font-size:14px;margin-bottom:10px">${name}</div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+        <div class="heatmap-region" style="font-size:14px">${name}</div>
+        ${['admin', 'project_lead'].includes(AppState.currentUser?.role) ? `<button class="btn btn-ghost btn-sm" style="padding:2px 4px;height:auto;font-size:11px" onclick="openEditRegion('${name}')" title="Editar Captación">✎</button>` : ''}
+      </div>
       <div class="heatmap-pct" style="font-size:34px">${pct.toFixed(0)}%</div>
       <div style="display:flex;justify-content:space-between;margin-top:6px">
         <div class="heatmap-detail" style="font-size:12px">
@@ -5308,6 +5476,40 @@ function renderHeatmapPage(container) {
   requestAnimationFrame(() => drawRegionalChart(data));
 }
 
+function openEditRegion(regionName) {
+  if (!['admin', 'project_lead'].includes(AppState.currentUser?.role)) {
+    showToast('Permisos insuficientes para editar captación regional', 'error'); return;
+  }
+  const data = DB.get();
+  const rd = data.regionData[regionName];
+  if (!rd) return;
+  Modal.open(`Editar Captación — ${regionName}`, `
+    <div class="form-group"><label class="form-label">Matrículas Actuales</label>
+      <input type="number" class="form-control" id="er-current" value="${rd.current}"></div>
+    <div class="form-group"><label class="form-label">Meta</label>
+      <input type="number" class="form-control" id="er-target" value="${rd.target}"></div>`,
+    `<button class="btn btn-secondary" onclick="Modal.close()">Cancelar</button>
+     <button class="btn btn-primary" onclick="saveEditRegion('${regionName}')">Guardar cambios</button>`);
+}
+
+function saveEditRegion(regionName) {
+  const current = parseInt(document.getElementById('er-current')?.value, 10);
+  const target = parseInt(document.getElementById('er-target')?.value, 10);
+  if (isNaN(current) || isNaN(target)) { showToast('Por favor ingresa números válidos', 'error'); return; }
+  DB.update(data => {
+    if (data.regionData[regionName]) {
+      const rd = data.regionData[regionName];
+      if (rd.current !== current && rd.trend) {
+        rd.trend.push(rd.current); // Save history before update
+      }
+      rd.current = current;
+      rd.target = target;
+    }
+  });
+  Modal.close(); showToast('Captación regional actualizada ✓');
+  renderHeatmapPage(document.getElementById('page-content'));
+}
+
 function drawRegionalChart(data) {
   const canvas = document.getElementById('regional-chart');
   if (!canvas || !window.Chart) return;
@@ -5340,20 +5542,20 @@ function renderAlerts(container) {
   const high = alerts.filter(a => a.severity === 'alta');
 
   const alertHTML = alerts.length === 0
-    ? `<div class="empty-state"><div class="es-icon">✅</div><div class="es-title">Sin alertas activas</div><div class="es-sub">Todos los indicadores están dentro de los umbrales esperados.</div></div>`
-    : alerts.map(a => `<div class="alert-item sev-${a.severity}">
+    ? `< div class="empty-state" ><div class="es-icon">✅</div><div class="es-title">Sin alertas activas</div><div class="es-sub">Todos los indicadores están dentro de los umbrales esperados.</div></div > `
+    : alerts.map(a => `< div class="alert-item sev-${a.severity}" >
         <div class="alert-icon">${a.icon}</div>
         <div class="alert-content">
           <div class="alert-title">${a.title}</div>
           <div class="alert-desc">${a.desc}</div>
           <div class="alert-meta">${a.okr ? `OKR: ${a.okr} ·` : ''} Detectado: ${a.date}</div>
         </div>
-      </div>`).join('');
+      </div > `).join('');
 
   container.innerHTML = `
-    <div class="section-header">
-      <div><div class="section-title">Sistema de Alertas Estratégicas</div><div class="section-sub">Desvíos detectados automáticamente según umbrales configurados</div></div>
-    </div>
+  < div class="section-header" >
+    <div><div class="section-title">Sistema de Alertas Estratégicas</div><div class="section-sub">Desvíos detectados automáticamente según umbrales configurados</div></div>
+    </div >
     <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
       <div class="kpi-card" style="--kpi-accent:#ef4444">
         <div class="kpi-label">Alertas críticas</div>
@@ -5375,7 +5577,7 @@ function renderAlerts(container) {
       <div class="card-header"><div class="card-title">Alertas Activas</div></div>
       <div class="card-body"><div class="alerts-list">${alertHTML}</div></div>
     </div>
-  `;
+`;
 }
 // ── Governance View ───────────────────────────
 function renderGovernance(container) {
@@ -5392,36 +5594,36 @@ function renderGovernance(container) {
   const cards = data.users.map(u => {
     const color = roleColors[u.role] || '#94a3b8';
     const initials = u.name.split(' ').map(w => w[0]).slice(0, 2).join('');
-    const perms = (rolePerms[u.role] || []).map(p => `<span class="perm-chip">${p}</span>`).join('');
-    return `<div class="role-card">
+    const perms = (rolePerms[u.role] || []).map(p => `< span class="perm-chip" > ${p}</span > `).join('');
+    return `< div class="role-card" >
       <div class="role-avatar" style="background:${color}">${initials}</div>
       <div style="flex:1;min-width:0">
         <div class="role-name">${u.name}</div>
         <div class="role-label">${Utils.roleLabel[u.role]} · ${u.email}</div>
         <div class="role-perms" style="margin-top:6px">${perms}</div>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="showToast('Funcionalidad de edición de usuarios disponible en v2.1','info')">✎</button>
-    </div>`;
+      <button class="btn btn-ghost btn-sm" onclick="openEditUser('${u.id}')" title="Editar usuario">✎</button>
+    </div > `;
   }).join('');
 
   container.innerHTML = `
-    <div class="section-header">
+  < div class="section-header" >
       <div><div class="section-title">Gobernanza y Roles</div><div class="section-sub">Estructura de responsabilidad y permisos del sistema</div></div>
       <button class="btn btn-primary btn-sm" onclick="showToast('Invitación enviada al nuevo usuario','success')">+ Invitar usuario</button>
+    </div >
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div class="card">
+      <div class="card-header"><div class="card-title">Usuarios y Roles</div></div>
+      <div class="card-body">${cards}</div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div style="display:flex;flex-direction:column;gap:16px">
       <div class="card">
-        <div class="card-header"><div class="card-title">Usuarios y Roles</div></div>
-        <div class="card-body">${cards}</div>
-      </div>
-
-      <div style="display:flex;flex-direction:column;gap:16px">
-        <div class="card">
-          <div class="card-header"><div class="card-title">Jerarquía de Responsabilidad</div></div>
-          <div class="card-body">
-            <div style="display:flex;flex-direction:column;gap:8px">
-              ${[
+        <div class="card-header"><div class="card-title">Jerarquía de Responsabilidad</div></div>
+        <div class="card-body">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            ${[
       ['#6366f1', 'Administrador Estratégico', 'Visión global, aprobación de OKRs y decisiones'],
       ['#10b981', 'Líder de Proyecto', 'Gestión de Project KRs y coordinación táctica'],
       ['#f59e0b', 'Responsable TKR', 'Ejecución y medición de resultados tácticos'],
@@ -5431,16 +5633,16 @@ function renderGovernance(container) {
                 <div style="width:12px;height:12px;border-radius:50%;background:${c};margin-top:3px;flex-shrink:0"></div>
                 <div><div style="font-size:13px;font-weight:700;color:var(--text-1)">${t}</div><div style="font-size:11.5px;color:var(--text-3);margin-top:1px">${d}</div></div>
               </div>`).join('')}
-            </div>
           </div>
         </div>
+      </div>
 
-        <div class="card">
-          <div class="card-header"><div class="card-title">Cambiar Usuario Activo</div></div>
-          <div class="card-body">
-            <p style="font-size:12.5px;color:var(--text-3);margin-bottom:12px">Simula el rol activo para visualizar permisos:</p>
-            <div style="display:flex;flex-direction:column;gap:6px">
-              ${data.users.map(u => {
+      <div class="card">
+        <div class="card-header"><div class="card-title">Cambiar Usuario Activo</div></div>
+        <div class="card-body">
+          <p style="font-size:12.5px;color:var(--text-3);margin-bottom:12px">Simula el rol activo para visualizar permisos:</p>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            ${data.users.map(u => {
       const color = roleColors[u.role] || '#94a3b8';
       const isActive = AppState.currentUser.id === u.id;
       return `<button onclick="switchUser('${u.id}')" class="btn ${isActive ? 'btn-primary' : 'btn-secondary'}" style="justify-content:flex-start;gap:10px">
@@ -5452,12 +5654,12 @@ function renderGovernance(container) {
                   ${isActive ? '<span style="margin-left:auto;font-size:10px">● Activo</span>' : ''}
                 </button>`;
     }).join('')}
-            </div>
           </div>
         </div>
       </div>
     </div>
-  `;
+  </div>
+`;
 }
 
 function switchUser(userId) {
@@ -5465,7 +5667,8 @@ function switchUser(userId) {
   const user = data.users.find(u => u.id === userId);
   if (user) {
     AppState.currentUser = user;
-    showToast(`Sesión cambiada a: ${user.name}`);
+    localStorage.setItem('currentUser', JSON.stringify(user));
+    showToast(`Sesión cambiada a: ${user.name} `);
     renderSidebar();
     renderGovernance(document.getElementById('page-content'));
   }
@@ -5474,9 +5677,9 @@ function switchUser(userId) {
 // ── Export View ───────────────────────────────
 function renderExport(container) {
   container.innerHTML = `
-    <div class="section-header">
-      <div><div class="section-title">Exportar Reportes Ejecutivos</div><div class="section-sub">Descarga de informes en múltiples formatos</div></div>
-    </div>
+  < div class="section-header" >
+    <div><div class="section-title">Exportar Reportes Ejecutivos</div><div class="section-sub">Descarga de informes en múltiples formatos</div></div>
+    </div >
 
     <div style="display:flex;gap:16px;flex-wrap:wrap">
       <div class="export-card" onclick="exportPDF()">
@@ -5503,7 +5706,7 @@ function renderExport(container) {
       <div class="card-header"><div class="card-title">Vista previa del reporte ejecutivo</div></div>
       <div class="card-body" id="export-preview">${buildExportPreview()}</div>
     </div>
-  `;
+`;
 }
 
 function buildExportPreview() {
@@ -5512,15 +5715,15 @@ function buildExportPreview() {
   const ci = Calc.compositeIndex(data.compositeIndex);
   const rows = data.okrs.map(okr => {
     const p = Calc.okrProgress(okr);
-    return `<tr>
+    return `< tr >
       <td class="td-name">${okr.name.substring(0, 60)}…</td>
       <td>${okr.responsibleUnit}</td>
       <td><strong>${p.toFixed(0)}%</strong></td>
       <td><span class="tl-badge ${Calc.trafficLight(p)}"><span class="dot"></span>${Calc.trafficLightLabel(p)}</span></td>
-    </tr>`;
+    </tr > `;
   }).join('');
   return `
-    <div style="border:2px solid var(--border);border-radius:var(--radius-md);padding:24px;font-size:12.5px">
+  < div style = "border:2px solid var(--border);border-radius:var(--radius-md);padding:24px;font-size:12.5px" >
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:16px;border-bottom:2px solid var(--border)">
         <div>
           <div style="font-size:18px;font-weight:800;color:var(--text-1)">Universidad EAN</div>
@@ -5539,7 +5742,7 @@ function buildExportPreview() {
         <strong>NPS:</strong> 48 puntos &nbsp;·&nbsp;
         <strong>Alianzas:</strong> 5 / 10
       </div>
-    </div>`;
+    </div > `;
 }
 
 function exportPDF() {
@@ -5584,7 +5787,7 @@ function renderManage(container) {
   const rows = [];
   data.okrs.forEach(okr => {
     const op = Calc.okrProgress(okr);
-    rows.push(`<tr style="background:#f1f5f9">
+    rows.push(`< tr style = "background:#f1f5f9" >
       <td style="padding:11px 8px 11px 14px">
         <span style="font-size:10px;font-weight:800;letter-spacing:.04em;color:#fff;background:${okr.color};padding:3px 8px;border-radius:100px">OKR</span>
       </td>
@@ -5593,19 +5796,20 @@ function renderManage(container) {
       <td style="font-size:12px">${okr.responsibleUnit}</td>
       <td><span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:100px;background:${Utils.priorityColor[okr.priority]}22;color:${Utils.priorityColor[okr.priority]}">${okr.priority}</span></td>
       <td><strong>${op.toFixed(0)}%</strong></td>
-      <td><span class="tl-badge ${Calc.trafficLight(op)}"><span class="dot"></span>${Calc.trafficLightLabel(op)}</span></td>
       <td style="white-space:nowrap">
+        ${AppState.currentUser.role === 'admin' ? `
         <label class="btn btn-ghost btn-sm" style="cursor:pointer; color:#10b981" title="Importar Excel a este OKR">📥 Excel
             <input type="file" style="display:none" accept=".xlsx, .xls" onchange="importExcelToOkr(event, '${okr.id}')">
         </label>
         <button class="btn btn-ghost btn-sm" onclick="openOKREdit('${okr.id}')">✎ Editar</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteOKR('${okr.id}')">✕</button>
+        ` : '<span style="color:var(--text-4); font-size:10px">Solo lectura</span>'}
       </td>
-    </tr>`);
+    </tr > `);
 
     okr.projectKRs.forEach(pkr => {
       const pp = Calc.pkrProgress(pkr);
-      rows.push(`<tr style="background:#fff">
+      rows.push(`< tr style = "background:#fff" >
         <td style="padding:10px 8px 10px 30px;color:var(--text-4);font-size:13px;cursor:pointer" onclick="toggleManagePKR('${pkr.id}')" title="Colapsar/Expandir"><span id="chevron-${pkr.id}" style="display:inline-block;transition:transform 0.2s;font-size:10px;margin-right:4px">▼</span>↳
           <span style="font-size:9.5px;font-weight:800;letter-spacing:.04em;color:#6366f1;background:#eef2ff;padding:2px 7px;border-radius:100px;margin-left:4px">KR Estratégico</span>
         </td>
@@ -5614,17 +5818,18 @@ function renderManage(container) {
         <td style="font-size:12px">${Utils.findUser(data, pkr.responsibleId).name.split(' ')[0]}</td>
         <td style="font-size:12px">Peso: ${pkr.weightInOKR}%</td>
         <td><strong>${pp.toFixed(0)}%</strong></td>
-        <td><span class="tl-badge ${Calc.trafficLight(pp)}"><span class="dot"></span>${Calc.trafficLightLabel(pp)}</span></td>
         <td style="white-space:nowrap">
+          ${Auth.canEdit(1, pkr.id) ? `
           <button class="btn btn-ghost btn-sm" style="color:#0ea5e9" onclick="openSharePKR('${okr.id}','${pkr.id}')">🔗 Compartir</button>
           <button class="btn btn-ghost btn-sm" onclick="openPKREdit('${pkr.id}')">✎ Editar</button>
           <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deletePKR('${okr.id}','${pkr.id}')">✕</button>
+          ` : (Auth.getPermissionForPKR(pkr.id) !== 'view' ? `<button class="btn btn-ghost btn-sm" style="color:#0ea5e9" onclick="openSharePKR('${okr.id}','${pkr.id}')">🔗 Compartir</button>` : '')}
         </td>
-      </tr>`);
+      </tr > `);
 
       pkr.tkrs.forEach(tkr => {
         const tp = Calc.tkrProgress(tkr);
-        rows.push(`<tr style="background:#fafafa" class="child-of-${pkr.id}" ondragover="allowDropKA(event)" ondrop="dropKA(event, '${tkr.id}', null)">
+        rows.push(`< tr style = "background:#fafafa" class="child-of-${pkr.id}" ondragover = "allowDropKA(event)" ondrop = "dropKA(event, '${tkr.id}', null)" >
           <td style="padding:9px 8px 9px 50px;color:var(--text-4);font-size:12px">↳
             <span style="font-size:9.5px;font-weight:800;letter-spacing:.04em;color:#10b981;background:#d1fae5;padding:2px 7px;border-radius:100px;margin-left:4px">KR Táctico</span>
           </td>
@@ -5633,16 +5838,17 @@ function renderManage(container) {
           <td style="font-size:12px">${Utils.findUser(data, tkr.responsibleId).name.split(' ')[0]}</td>
           <td style="font-size:12px">Peso: ${tkr.weightInPKR}%</td>
           <td><strong>${tp.toFixed(0)}%</strong></td>
-          <td><span class="tl-badge ${Calc.trafficLight(tp)}"><span class="dot"></span>${Calc.trafficLightLabel(tp)}</span></td>
           <td style="white-space:nowrap">
+            ${Auth.canEdit(2, pkr.id) ? `
             <button class="btn btn-ghost btn-sm" onclick="openTKREdit('${pkr.id}','${tkr.id}')">✎ Editar</button>
             <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteTKR('${pkr.id}','${tkr.id}')">✕</button>
+            ` : ''}
           </td>
-        </tr>`);
+        </tr > `);
 
         tkr.kas.forEach(ka => {
           const dot = Utils.statusColor[ka.status] || '#94a3b8';
-          rows.push(`<tr style="background:#fff;cursor:grab" class="child-of-${pkr.id} ka-row" draggable="true" ondragstart="dragKA(event, '${tkr.id}', '${ka.id}')" ondragover="allowDropKA(event)" ondrop="dropKA(event, '${tkr.id}', '${ka.id}')" ondragend="this.style.opacity='1'">
+          rows.push(`< tr style = "background:#fff;cursor:grab" class="child-of-${pkr.id} ka-row" draggable = "true" ondragstart = "dragKA(event, '${tkr.id}', '${ka.id}')" ondragover = "allowDropKA(event)" ondrop = "dropKA(event, '${tkr.id}', '${ka.id}')" ondragend = "this.style.opacity='1'" >
             <td style="padding:8px 8px 8px 70px;font-size:11px">
               <span style="font-size:9px;font-weight:800;letter-spacing:.04em;color:#f59e0b;background:#fef9c3;padding:2px 7px;border-radius:100px">Key Action</span>
             </td>
@@ -5658,16 +5864,17 @@ function renderManage(container) {
                 <strong style="font-size:11px">${ka.progress}%</strong>
               </div>
             </td>
-            <td></td>
             <td style="white-space:nowrap">
+              ${Auth.canEdit(3, pkr.id) ? `
               <button class="btn btn-ghost btn-sm" onclick="openKAEdit('${ka.id}')">✎ Editar</button>
               <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteKA('${tkr.id}','${ka.id}')">✕</button>
+              ` : ''}
             </td>
-          </tr>`);
+          </tr > `);
         });
 
         // Indicadores row (meta vs actual inline)
-        rows.push(`<tr style="background:#fdf8f0;border-top:1px dashed #fde68a" class="child-of-${pkr.id}">
+        rows.push(`< tr style = "background:#fdf8f0;border-top:1px dashed #fde68a" class="child-of-${pkr.id}" >
           <td style="padding:7px 8px 7px 90px;font-size:10px">
             <span style="font-size:9px;font-weight:800;letter-spacing:.04em;color:#92400e;background:#fef3c7;padding:2px 7px;border-radius:100px">Indicadores</span>
           </td>
@@ -5680,23 +5887,29 @@ function renderManage(container) {
             Meta: <strong style="color:#10b981">${tkr.target} ${tkr.unit}</strong>
           </td>
           <td style="white-space:nowrap">
+            ${Auth.canEdit(2, pkr.id) ? `
             <button class="btn btn-ghost btn-sm" onclick="openIndicadorEdit('${pkr.id}','${tkr.id}')">✎ Editar</button>
+            ` : ''}
           </td>
-        </tr>`);
+        </tr > `);
       });
     });
   });
 
   // ── Creation toolbar ──────────────────────────
+  const isAdmin = AppState.currentUser.role === 'admin';
   const toolbar = `
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <span style="font-size:11.5px;font-weight:700;color:var(--text-3);margin-right:4px">+ Agregar:</span>
+  < div style = "display:flex;gap:8px;flex-wrap:wrap;align-items:center" >
+    <span style="font-size:11.5px;font-weight:700;color:var(--text-3);margin-right:4px">+ Agregar:</span>
+      ${isAdmin ? `
       <button class="btn btn-sm" style="background:#eef2ff;color:#4f46e5;font-weight:700" onclick="openNewOKR()">
         ◈ OKR Estratégico
       </button>
       <button class="btn btn-sm" style="background:#ede9fe;color:#7c3aed;font-weight:700" onclick="openNewPKR()">
         ↳ KR Estratégico
       </button>
+      ` : ''
+    }
       <button class="btn btn-sm" style="background:#d1fae5;color:#065f46;font-weight:700" onclick="openNewTKR()">
         ↳↳ KR Táctico
       </button>
@@ -5706,32 +5919,32 @@ function renderManage(container) {
       <button class="btn btn-sm" style="background:#fff7ed;color:#c2410c;font-weight:700" onclick="openNewIndicador()">
         ◎ Indicadores / Metas
       </button>
-    </div>`;
+    </div > `;
 
   container.innerHTML = `
-    <div class="section-header">
+  < div class="section-header" >
       <div>
         <div class="section-title">Gestión de OKRs</div>
         <div class="section-sub">Árbol completo con 5 niveles · Crear, editar y eliminar elementos</div>
       </div>
       <button class="btn btn-primary btn-sm" onclick="openNewCheckin()">+ Check-in</button>
-    </div>
+    </div >
 
-    <div class="card">
-      <div class="card-header" style="flex-wrap:wrap;gap:12px">
-        <div><div class="card-title">Árbol OKR Completo</div><div class="card-sub">Jerarquía con 5 niveles de indentación</div></div>
-        ${toolbar}
-      </div>
-      <div style="overflow-x:auto">
-        <table class="data-table">
-          <thead><tr>
-            <th>Nivel</th><th>Nombre / Descripción</th><th>Tipo / Estado</th>
-            <th>Responsable</th><th>Peso / Fecha</th><th>Progreso / Actual</th><th>Semáforo</th><th>Acciones</th>
-          </tr></thead>
-          <tbody>${rows.join('')}</tbody>
-        </table>
-      </div>
-    </div>`;
+  <div class="card">
+    <div class="card-header" style="flex-wrap:wrap;gap:12px">
+      <div><div class="card-title">Árbol OKR Completo</div><div class="card-sub">Jerarquía con 5 niveles de indentación</div></div>
+      ${toolbar}
+    </div>
+    <div style="overflow-x:auto">
+      <table class="data-table">
+        <thead><tr>
+          <th>Nivel</th><th>Nombre / Descripción</th><th>Tipo / Estado</th>
+          <th>Responsable</th><th>Peso / Fecha</th><th>Progreso / Actual</th><th>Acciones</th>
+        </tr></thead>
+        <tbody>${rows.join('')}</tbody>
+      </table>
+    </div>
+  </div>`;
 }
 
 // ── Helper already in views-okrtree ──────────────
@@ -5747,12 +5960,12 @@ function kaStatusClass(s) {
 function openNewOKR() {
   const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#06b6d4', '#8b5cf6', '#ef4444'];
   const colorBtns = COLORS.map((c, i) =>
-    `<button type="button" onclick="this.parentElement.querySelectorAll('button').forEach(b=>b.style.outline='none');this.style.outline='3px solid #000';document.getElementById('okr-color').value='${c}'"
-      style="width:26px;height:26px;border-radius:50%;background:${c};border:none;cursor:pointer;${i === 0 ? 'outline:3px solid #000' : ''}"></button>`
+    `< button type = "button" onclick = "this.parentElement.querySelectorAll('button').forEach(b=>b.style.outline='none');this.style.outline='3px solid #000';document.getElementById('okr-color').value='${c}'"
+style = "width:26px;height:26px;border-radius:50%;background:${c};border:none;cursor:pointer;${i === 0 ? 'outline:3px solid #000' : ''}" ></button > `
   ).join('');
   Modal.open('Nuevo OKR Estratégico', `
-    <div class="form-group"><label class="form-label">Nombre del OKR</label>
-      <textarea class="form-control" id="okr-name" rows="3" placeholder="Ej: Desplegar el Modelo Ean Virtual 2.0 en las regiones priorizadas…"></textarea></div>
+  < div class="form-group" ><label class="form-label">Nombre del OKR</label>
+      <textarea class="form-control" id="okr-name" rows="3" placeholder="Ej: Desplegar el Modelo Ean Virtual 2.0 en las regiones priorizadas…"></textarea></div >
     <div class="form-row">
       <div class="form-group"><label class="form-label">Horizonte</label>
         <select class="form-control" id="okr-horizon"><option>anual</option><option>semestral</option><option>trimestral</option></select></div>
@@ -5768,11 +5981,12 @@ function openNewOKR() {
     <div class="form-group"><label class="form-label">Color de identificación</label>
       <div style="display:flex;gap:8px;margin-top:4px">${colorBtns}</div>
       <input type="hidden" id="okr-color" value="${COLORS[0]}"></div>`,
-    `<button class="btn btn-secondary" onclick="Modal.close()">Cancelar</button>
-     <button class="btn btn-primary" onclick="saveNewOKR()">Crear OKR</button>`);
+    `< button class="btn btn-secondary" onclick = "Modal.close()" > Cancelar</button >
+  <button class="btn btn-primary" onclick="saveNewOKR()">Crear OKR</button>`);
 }
 
 function saveNewOKR() {
+  if (AppState.currentUser.role !== 'admin') { showToast('Acceso denegado: Se requiere rol Admin', 'error'); return; }
   const name = document.getElementById('okr-name').value.trim();
   if (!name) { showToast('El nombre del OKR es requerido', 'error'); return; }
   DB.update(data => {
@@ -5795,13 +6009,13 @@ function saveNewOKR() {
 function openNewPKR() {
   const data = DB.get();
   if (!data.okrs.length) { showToast('Primero crea un OKR Estratégico', 'warning'); return; }
-  const okrOpts = data.okrs.map(o => `<option value="${o.id}">${o.name.substring(0, 60)}…</option>`).join('');
-  const userOpts = data.users.map(u => `<option value="${u.name}"></option>`).join('');
+  const okrOpts = data.okrs.map(o => `< option value = "${o.id}" > ${o.name.substring(0, 60)}…</option > `).join('');
+  const userOpts = data.users.map(u => `< option value = "${u.name}" ></option > `).join('');
   const typeOpts = ['Posicionamiento', 'Implementación', 'Formación', 'Reputación', 'Operativo']
-    .map(t => `<option>${t}</option>`).join('');
+    .map(t => `< option > ${t}</option > `).join('');
   Modal.open('Nuevo KR Estratégico (Project KR)', `
-    <div class="form-group"><label class="form-label">OKR padre</label>
-      <select class="form-control" id="pkr-parent">${okrOpts}</select></div>
+  < div class="form-group" ><label class="form-label">OKR padre</label>
+      <select class="form-control" id="pkr-parent">${okrOpts}</select></div >
     <div class="form-group"><label class="form-label">Nombre del KR Estratégico</label>
       <textarea class="form-control" id="pkr-name" rows="2" placeholder="Ej: Posicionar el modelo como referente nacional…"></textarea></div>
     <div class="form-row">
@@ -5830,11 +6044,12 @@ function openNewPKR() {
     </div>
     <div class="form-group"><label class="form-label">Fuente de verificación</label>
       <input type="text" class="form-control" id="pkr-source" placeholder="Ej: Sistema Banner + Encuesta anual"></div>`,
-    `<button class="btn btn-secondary" onclick="Modal.close()">Cancelar</button>
-     <button class="btn btn-primary" onclick="saveNewPKR()">Crear KR Estratégico</button>`);
+    `< button class="btn btn-secondary" onclick = "Modal.close()" > Cancelar</button >
+  <button class="btn btn-primary" onclick="saveNewPKR()">Crear KR Estratégico</button>`);
 }
 
 function saveNewPKR() {
+  if (AppState.currentUser.role !== 'admin') { showToast('Acceso denegado: Se requiere rol Admin', 'error'); return; }
   const name = document.getElementById('pkr-name').value.trim();
   if (!name) { showToast('El nombre es requerido', 'error'); return; }
   DB.update(data => {
@@ -5863,15 +6078,15 @@ function saveNewPKR() {
 function openNewTKR() {
   const data = DB.get();
   const pkrOpts = data.okrs.flatMap(o => o.projectKRs.map(p =>
-    `<option value="${o.id}|${p.id}">${o.name.substring(0, 30)}… → ${p.name.substring(0, 35)}…</option>`
+    `< option value = "${o.id}|${p.id}" > ${o.name.substring(0, 30)}… → ${p.name.substring(0, 35)}…</option > `
   )).join('');
   if (!pkrOpts) { showToast('Primero crea un KR Estratégico', 'warning'); return; }
-  const userOpts = data.users.map(u => `<option value="${u.name}"></option>`).join('');
+  const userOpts = data.users.map(u => `< option value = "${u.name}" ></option > `).join('');
   const perOpts = ['Diario', 'Semanal', 'Quincenal', 'Mensual', 'Bimestral', 'Trimestral', 'Semestral', 'Única vez']
-    .map(p => `<option>${p}</option>`).join('');
+    .map(p => `< option > ${p}</option > `).join('');
   Modal.open('Nuevo KR Táctico (TKR)', `
-    <div class="form-group"><label class="form-label">KR Estratégico padre</label>
-      <select class="form-control" id="tkr-parent">${pkrOpts}</select></div>
+  < div class="form-group" ><label class="form-label">KR Estratégico padre</label>
+      <select class="form-control" id="tkr-parent">${pkrOpts}</select></div >
     <div class="form-group"><label class="form-label">Nombre del KR Táctico</label>
       <textarea class="form-control" id="tkr-name" rows="2" placeholder="Ej: Incrementar en 25% el reconocimiento del modelo…"></textarea></div>
     <div class="form-group"><label class="form-label">Métrica específica</label>
@@ -5898,14 +6113,15 @@ function openNewTKR() {
     </div>
     <div class="form-group"><label class="form-label">Responsable</label>
       <input type="text" class="form-control" id="tkr-resp" list="users-list" placeholder="Escribir o elegir..."><datalist id="users-list">${userOpts}</datalist></div>`,
-    `<button class="btn btn-secondary" onclick="Modal.close()">Cancelar</button>
-     <button class="btn btn-primary" onclick="saveNewTKR()">Crear KR Táctico</button>`);
+    `< button class="btn btn-secondary" onclick = "Modal.close()" > Cancelar</button >
+  <button class="btn btn-primary" onclick="saveNewTKR()">Crear KR Táctico</button>`);
 }
 
 function saveNewTKR() {
+  const [okrId, pkrId] = document.getElementById('tkr-parent').value.split('|');
+  if (!Auth.canEdit(2, pkrId)) { showToast('Acceso denegado', 'error'); return; }
   const name = document.getElementById('tkr-name').value.trim();
   if (!name) { showToast('El nombre es requerido', 'error'); return; }
-  const [okrId, pkrId] = document.getElementById('tkr-parent').value.split('|');
   DB.update(data => {
     const okr = data.okrs.find(o => o.id === okrId);
     if (!okr) return;
@@ -5934,15 +6150,15 @@ function saveNewTKR() {
 function openNewKA() {
   const data = DB.get();
   const tkrOpts = data.okrs.flatMap(o => o.projectKRs.flatMap(p => p.tkrs.map(t =>
-    `<option value="${p.id}|${t.id}">${t.name.substring(0, 55)}…</option>`
+    `< option value = "${p.id}|${t.id}" > ${t.name.substring(0, 55)}…</option > `
   ))).join('');
   if (!tkrOpts) { showToast('Primero crea un KR Táctico', 'warning'); return; }
-  const userOpts = data.users.map(u => `<option value="${u.name}"></option>`).join('');
+  const userOpts = data.users.map(u => `< option value = "${u.name}" ></option > `).join('');
   const regionOpts = ['Bogotá', 'Medellín', 'Cali', 'Barranquilla', 'Bucaramanga', 'Nacional']
-    .map(r => `<option>${r}</option>`).join('');
+    .map(r => `< option > ${r}</option > `).join('');
   Modal.open('Nueva Key Action', `
-    <div class="form-group"><label class="form-label">KR Táctico padre</label>
-      <select class="form-control" id="ka-parent">${tkrOpts}</select></div>
+  < div class="form-group" ><label class="form-label">KR Táctico padre</label>
+      <select class="form-control" id="ka-parent">${tkrOpts}</select></div >
     <div class="form-group"><label class="form-label">Descripción de la acción</label>
       <textarea class="form-control" id="ka-description" rows="3" placeholder="Ej: Diseñar y ejecutar campaña de posicionamiento en medios digitales…"></textarea></div>
     <div class="form-row">
@@ -5967,14 +6183,15 @@ function openNewKA() {
     </div>
     <div class="form-group"><label class="form-label">Notas / Contexto</label>
       <textarea class="form-control" id="ka-notes" rows="2" placeholder="Observaciones iniciales…"></textarea></div>`,
-    `<button class="btn btn-secondary" onclick="Modal.close()">Cancelar</button>
-     <button class="btn btn-primary" onclick="saveNewKA()">Crear Key Action</button>`);
+    `< button class="btn btn-secondary" onclick = "Modal.close()" > Cancelar</button >
+  <button class="btn btn-primary" onclick="saveNewKA()">Crear Key Action</button>`);
 }
 
 function saveNewKA() {
+  const [pkrId, tkrId] = document.getElementById('ka-parent').value.split('|');
+  if (!Auth.canEdit(3, pkrId)) { showToast('Acceso denegado', 'error'); return; }
   const desc = document.getElementById('ka-description').value.trim();
   if (!desc) { showToast('La descripción es requerida', 'error'); return; }
-  const [pkrId, tkrId] = document.getElementById('ka-parent').value.split('|');
   DB.update(data => {
     data.okrs.forEach(o => o.projectKRs.forEach(pkr => {
       if (pkr.id !== pkrId) return;
@@ -6003,16 +6220,16 @@ function saveNewKA() {
 function openNewIndicador() {
   const data = DB.get();
   const tkrOpts = data.okrs.flatMap(o => o.projectKRs.flatMap(p => p.tkrs.map(t =>
-    `<option value="${p.id}|${t.id}">${t.name.substring(0, 60)}…</option>`
+    `< option value = "${p.id}|${t.id}" > ${t.name.substring(0, 60)}…</option > `
   ))).join('');
   if (!tkrOpts) { showToast('Primero crea un KR Táctico', 'warning'); return; }
   Modal.open('Editar Indicadores / Metas', `
-    <p style="font-size:12.5px;color:var(--text-3);margin-bottom:16px">Selecciona el KR Táctico al que deseas ajustar los indicadores y metas de seguimiento.</p>
+  < p style = "font-size:12.5px;color:var(--text-3);margin-bottom:16px" > Selecciona el KR Táctico al que deseas ajustar los indicadores y metas de seguimiento.</p >
     <div class="form-group"><label class="form-label">KR Táctico</label>
       <select class="form-control" id="ind-tkr" onchange="loadIndicadorFields(this.value)">${tkrOpts}</select></div>
     <div id="ind-fields"></div>`,
-    `<button class="btn btn-secondary" onclick="Modal.close()">Cancelar</button>
-     <button class="btn btn-primary" onclick="saveIndicador()">Guardar Indicadores</button>`);
+    `< button class="btn btn-secondary" onclick = "Modal.close()" > Cancelar</button >
+  <button class="btn btn-primary" onclick="saveIndicador()">Guardar Indicadores</button>`);
   // Auto-load first TKR
   setTimeout(() => {
     const sel = document.getElementById('ind-tkr');
@@ -6027,7 +6244,7 @@ function loadIndicadorFields(val) {
   data.okrs.forEach(o => o.projectKRs.forEach(p => { if (p.id === pkrId) p.tkrs.forEach(t => { if (t.id === tkrId) tkr = t; }); }));
   if (!tkr) return;
   document.getElementById('ind-fields').innerHTML = `
-    <div class="form-group"><label class="form-label">Métrica específica</label>
+    < div class="form-group" ><label class="form-label">Métrica específica</label>
       <input type="text" class="form-control" id="ind-metric" value="${tkr.metric}"></div>
     <div class="form-group"><label class="form-label">Fórmula de cálculo</label>
       <input type="text" class="form-control" id="ind-formula" value="${tkr.formula}"></div>
@@ -6052,6 +6269,7 @@ function loadIndicadorFields(val) {
 
 function saveIndicador() {
   const pkrId = document.getElementById('ind-pkrid')?.value;
+  if (!Auth.canEdit(2, pkrId)) { showToast('Acceso denegado', 'error'); return; }
   const tkrId = document.getElementById('ind-tkrid')?.value;
   if (!pkrId || !tkrId) return;
   DB.update(data => {
@@ -6106,6 +6324,7 @@ function openOKREdit(okrId) {
 }
 
 function saveOKR(id) {
+  if (AppState.currentUser.role !== 'admin') { showToast('Acceso denegado', 'error'); return; }
   DB.update(data => {
     const okr = data.okrs.find(o => o.id === id);
     if (!okr) return;
@@ -6150,6 +6369,7 @@ function openPKREdit(pkrId) {
 }
 
 function savePKR(pkrId) {
+  if (!Auth.canEdit(1, pkrId)) { showToast('Acceso denegado', 'error'); return; }
   DB.update(data => {
     data.okrs.forEach(o => o.projectKRs.forEach(pkr => {
       if (pkr.id !== pkrId) return;
@@ -6194,13 +6414,23 @@ function openSharePKR(okrId, pkrId) {
   ].map(o => `<option value="${o.val}">${o.label}</option>`).join('');
 
   const sharesList = pkr.shares.length === 0 ? '<p style="font-size:12px;color:var(--text-3);font-style:italic">No compartido aún.</p>' :
-    pkr.shares.map(s => `<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); font-size:12px">
-        <div style="display:flex; flex-direction:column">
-            <strong>${s.email}</strong>
-            <span style="color:var(--text-3); font-size:10px">${s.permissionName}</span>
+    pkr.shares.map(s => {
+      const baseUrl = window.location.href.split('?')[0];
+      const remoteLink = `${baseUrl}?u=${encodeURIComponent(s.email)}`;
+      return `<div style="padding:10px 0; border-bottom:1px solid var(--border); font-size:12px">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px">
+            <div style="display:flex; flex-direction:column">
+                <strong>${s.email}</strong>
+                <span style="color:var(--text-3); font-size:10px">${s.permissionName}</span>
+            </div>
+            <button class="btn btn-ghost btn-sm" style="color:var(--red); padding:4px" onclick="removeSharePKR('${okrId}', '${pkrId}', '${s.email}')">✕ Revocar</button>
         </div>
-        <button class="btn btn-ghost btn-sm" style="color:var(--red); padding:4px" onclick="removeSharePKR('${okrId}', '${pkrId}', '${s.email}')">✕ Revocar</button>
-    </div>`).join('');
+        <div style="background:var(--surface-1); padding:6px; border-radius:4px; font-family:monospace; font-size:10px; word-break:break-all; border:1px dashed var(--border)">
+            ${remoteLink}
+        </div>
+        <div style="margin-top:4px"><a href="${remoteLink}" target="_blank" style="font-size:10px; color:var(--brand-primary)">Probar acceso ↗</a></div>
+      </div>`;
+    }).join('');
 
   Modal.open('Compartir KR Estratégico', `
     <div style="margin-bottom:16px">
@@ -6213,14 +6443,11 @@ function openSharePKR(okrId, pkrId) {
         <input type="email" class="form-control" id="share-email" placeholder="ejemplo@ean.edu.co"></div>
         <div class="form-group"><label class="form-label">Nivel de permisos</label>
         <select class="form-control" id="share-perm" style="font-size:12.5px">${permOpts}</select></div>
-        <button class="btn btn-primary" style="width:100%; margin-top:8px" onclick="addSharePKR('${okrId}', '${pkrId}')">Invitar y otorgar acceso</button>
+        <button class="btn btn-primary" style="width:100%; margin-top:8px" onclick="addSharePKR('${okrId}', '${pkrId}')">Invitar y crear enlace</button>
     </div>
 
-    <div class="form-group"><label class="form-label" style="display:flex; justify-content:space-between; align-items:center">
-        <span>Usuarios con acceso</span>
-        <span style="font-weight:400; font-size:11px; color:var(--text-4)">${pkr.shares.length} usuarios</span>
-    </label>
-        <div id="pkr-shares-list" style="max-height:200px; overflow-y:auto; padding-right:4px">${sharesList}</div>
+    <div class="form-group"><label class="form-label">Accesos y Enlaces Remotos</label>
+        <div id="pkr-shares-list">${sharesList}</div>
     </div>`,
     `<button class="btn btn-secondary" onclick="Modal.close()">Cerrar</button>`);
 }
@@ -6319,6 +6546,7 @@ function openTKREdit(pkrId, tkrId) {
 }
 
 function saveTKR(pkrId, tkrId) {
+  if (!Auth.canEdit(2, pkrId)) { showToast('Acceso denegado', 'error'); return; }
   DB.update(data => {
     data.okrs.forEach(o => o.projectKRs.forEach(pkr => {
       if (pkr.id !== pkrId) return;
@@ -6343,21 +6571,28 @@ function openIndicadorEdit(pkrId, tkrId) { openNewIndicador(); setTimeout(() => 
 //  DELETE helpers
 // ══════════════════════════════════════════════
 function deleteOKR(okrId) {
+  if (AppState.currentUser.role !== 'admin') { showToast('Acceso denegado', 'error'); return; }
   if (!confirm('¿Eliminar este OKR y todos sus niveles hijos? Esta acción no se puede deshacer.')) return;
   DB.update(data => { data.okrs = data.okrs.filter(o => o.id !== okrId); });
   showToast('OKR eliminado'); renderManage(document.getElementById('page-content'));
 }
 function deletePKR(okrId, pkrId) {
+  if (!Auth.canEdit(1, pkrId)) { showToast('Acceso denegado', 'error'); return; }
   if (!confirm('¿Eliminar este KR Estratégico y sus KRs tácticos y acciones?')) return;
   DB.update(data => { const o = data.okrs.find(x => x.id === okrId); if (o) o.projectKRs = o.projectKRs.filter(p => p.id !== pkrId); });
   showToast('KR Estratégico eliminado'); renderManage(document.getElementById('page-content'));
 }
 function deleteTKR(pkrId, tkrId) {
+  if (!Auth.canEdit(2, pkrId)) { showToast('Acceso denegado', 'error'); return; }
   if (!confirm('¿Eliminar este KR Táctico y sus Key Actions?')) return;
   DB.update(data => { data.okrs.forEach(o => o.projectKRs.forEach(p => { if (p.id === pkrId) p.tkrs = p.tkrs.filter(t => t.id !== tkrId); })); });
   showToast('KR Táctico eliminado'); renderManage(document.getElementById('page-content'));
 }
 function deleteKA(tkrId, kaId) {
+  const data = DB.get();
+  let pkrId = null;
+  data.okrs.forEach(o => o.projectKRs.forEach(p => { if (p.tkrs.find(t => t.id === tkrId)) pkrId = p.id; }));
+  if (!Auth.canEdit(3, pkrId)) { showToast('Acceso denegado', 'error'); return; }
   if (!confirm('¿Eliminar esta Key Action?')) return;
   DB.update(data => { data.okrs.forEach(o => o.projectKRs.forEach(p => p.tkrs.forEach(t => { if (t.id === tkrId) t.kas = t.kas.filter(k => k.id !== kaId); }))); });
   showToast('Key Action eliminada'); renderManage(document.getElementById('page-content'));
@@ -6412,6 +6647,7 @@ function openNewCheckin() {
 }
 
 function saveCheckin() {
+  if (AppState.currentUser.role === 'viewer') { showToast('Acceso denegado: Los observadores no pueden realizar check-ins', 'error'); return; }
   DB.update(data => {
     data.checkins.push({
       id: Utils.uuid(), date: Utils.today(), type: 'weekly',
