@@ -2230,7 +2230,7 @@ const DB = (() => {
   async function load() {
     try {
       console.log("📥 Cargando datos desde Firestore...");
-      const doc = await dbFirestore.collection(COLLECTION).doc(DOC_ID).get();
+      const doc = await window.dbFirestore.collection(COLLECTION).doc(DOC_ID).get();
       if (doc.exists) {
         _data = doc.data();
         console.log("✅ Datos cargados desde Firestore");
@@ -2250,7 +2250,7 @@ const DB = (() => {
   async function save() {
     if (!_data) return;
     try {
-      await dbFirestore.collection(COLLECTION).doc(DOC_ID).set(_data);
+      await window.dbFirestore.collection(COLLECTION).doc(DOC_ID).set(_data);
       localStorage.setItem(DB_KEY, JSON.stringify(_data));
       console.log("💾 Datos sincronizados con Firestore");
     } catch (err) {
@@ -2260,7 +2260,7 @@ const DB = (() => {
   }
 
   function subscribeToChanges(callback) {
-    return dbFirestore.collection(COLLECTION).doc(DOC_ID).onSnapshot(doc => {
+    return window.dbFirestore.collection(COLLECTION).doc(DOC_ID).onSnapshot(doc => {
       if (doc.exists) {
         _data = doc.data();
         console.log("🔄 Actualizando UI por cambio en Firestore");
