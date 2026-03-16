@@ -3132,31 +3132,60 @@ function openEditRegion(regionName) {
   const data = DB.get();
   const r = data.regionData[regionName];
   if (!r) return;
-  Modal.open(`Editar Región: ${regionName}`, `
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Matrículas Actuales</label>
-        <input type="number" class="form-control" id="er-current" value="${r.current}"></div>
-      <div class="form-group"><label class="form-label">Meta Final</label>
-        <input type="number" class="form-control" id="er-target" value="${r.target}"></div>
-    </div>`,
+
+  // Trend labels (meses)
+  const labels = ['Oct 25', 'Nov 25', 'Dic 25', 'Ene 26', 'Feb 26'];
+  const trendInputs = r.trend.map((val, i) => `
+    <div class="form-group" style="margin-bottom:8px">
+      <label class="form-label" style="font-size:11px">${labels[i]}</label>
+      <input type="number" class="form-control trend-input" value="${val}" data-index="${i}">
+    </div>
+  `).join('');
+
+  Modal.open(`Editar Panel: ${regionName}`, `
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:15px">
+      <div class="form-group">
+        <label class="form-label">Matrículas Actuales</label>
+        <input type="number" class="form-control" id="er-current" value="${r.current}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Meta Final (Target)</label>
+        <input type="number" class="form-control" id="er-target" value="${r.target}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="font-weight:600">Histórico de Tendencia (Últimos 5 meses)</label>
+      <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:8px">
+        ${trendInputs}
+      </div>
+    </div>
+  `,
     `<button class="btn btn-secondary" onclick="Modal.close()">Cancelar</button>
-     <button class="btn btn-primary" onclick="saveEditRegion('${regionName}')">Guardar</button>`);
+     <button class="btn btn-primary" onclick="saveEditRegion('${regionName}')">Actualizar Panel</button>`);
 }
 
 function saveEditRegion(regionName) {
   const current = parseFloat(document.getElementById('er-current')?.value);
   const target = parseFloat(document.getElementById('er-target')?.value);
-  if (isNaN(current) || isNaN(target)) { showToast('Valores numéricos requeridos', 'error'); return; }
+
+  const trendInputs = document.querySelectorAll('.trend-input');
+  const trend = Array.from(trendInputs).map(input => parseFloat(input.value));
+
+  if (isNaN(current) || isNaN(target) || trend.some(isNaN)) {
+    showToast('Todos los campos deben ser numéricos', 'error');
+    return;
+  }
 
   DB.update(data => {
     if (data.regionData[regionName]) {
       data.regionData[regionName].current = current;
       data.regionData[regionName].target = target;
-      data.regionData[regionName].trend[data.regionData[regionName].trend.length - 1] = current;
+      data.regionData[regionName].trend = trend;
     }
   });
 
-  Modal.close(); showToast('Región actualizada ✓', 'success');
+  Modal.close();
+  showToast('Datos de región actualizados ✓', 'success');
   renderHeatmapPage(document.getElementById('page-content'));
 }
 
@@ -4327,13 +4356,20 @@ function saveAddUser() {
 function deleteUser(userId) {
   if (AppState.currentUser.role !== 'admin') { showToast('Solo administradores pueden eliminar usuarios', 'error'); return; }
   if (userId === AppState.currentUser.id) { showToast('No puedes eliminar tu propia cuenta', 'error'); return; }
+
   if (confirm('¿Estás seguro de eliminar este usuario? No podrá acceder al sistema.')) {
     DB.update(data => {
+      const initialCount = data.users.length;
       data.users = data.users.filter(u => u.id !== userId);
+      if (data.users.length === initialCount) {
+        console.warn("No se encontró el usuario para eliminar:", userId);
+      }
     });
     Modal.close();
-    showToast('Usuario eliminado', 'info');
-    renderGovernance(document.getElementById('page-content'));
+    showToast('Usuario eliminado con éxito', 'info');
+    // Forzar re-renderizado
+    const content = document.getElementById('page-content');
+    if (content) renderGovernance(content);
   }
 }
 
