@@ -2461,6 +2461,36 @@ const Utils = {
   sendEmail({ to, subject, body }) {
     const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.location.href = mailto;
+  },
+  getPKRPermission(pkrId) {
+    const data = DB.get();
+    const user = AppState.currentUser;
+    if (!user) return 0;
+
+    // Admins and Project Leads have full access (Level 4)
+    if (user.role === 'admin' || user.role === 'project_lead') return 4;
+
+    // Check specific PKR shares for this user
+    let sharedPerm = null;
+    data.okrs.forEach(o => {
+      o.projectKRs.forEach(p => {
+        if (p.id === pkrId && p.shares) {
+          const share = p.shares.find(s => s.email === user.email);
+          if (share) sharedPerm = share.permission;
+        }
+      });
+    });
+
+    if (sharedPerm === 'edit1') return 3;
+    if (sharedPerm === 'edit2') return 2;
+    if (sharedPerm === 'edit3') return 1;
+    if (sharedPerm === 'view') return 0;
+
+    // Fallback based on global role for non-shared KRs
+    if (user.role === 'tkr_owner') return 2;
+    if (user.role === 'ka_owner') return 1;
+
+    return 0; // Default: View only
   }
 };
 // ── Dashboard ─────────────────────────────────
@@ -2859,10 +2889,21 @@ function toggleTKR(id) { AppState.expandedTKRs.has(id) ? AppState.expandedTKRs.d
 // ── Edit KA Modal ─────────────────────────────
 function openKAEdit(kaId) {
   const data = DB.get();
-  let found = null;
-  data.okrs.forEach(okr => okr.projectKRs.forEach(pkr => pkr.tkrs.forEach(tkr => tkr.kas.forEach(ka => { if (ka.id === kaId) found = ka; }))));
-  if (!found) return;
-  const ka = found;
+  let pkrId = null;
+  let ka = null;
+  data.okrs.forEach(o => o.projectKRs.forEach(p => {
+    p.tkrs.forEach(t => t.kas.forEach(k => {
+      if (k.id === kaId) {
+        pkrId = p.id;
+        ka = k;
+      }
+    }));
+  }));
+
+  if (!ka) return; // Key Action not found
+
+  if (Utils.getPKRPermission(pkrId) < 1) { showToast('Acceso insuficiente para editar Key Action', 'error'); return; }
+
   const statusOpts = ['No iniciado', 'En progreso', 'Completado', 'Riesgo'].map(s => `<option ${ka.status === s ? 'selected' : ''}>${s}</option>`).join('');
   const userOpts = data.users.map(u => `<option value="${u.name}"></option>`).join('');
   const kaRespName = Utils.findUser(data, ka.responsibleId).name;
@@ -3136,6 +3177,7 @@ function drawRegionalChart(data) {
 }
 
 function openEditRegion(regionName) {
+  if (AppState.currentUser.role !== 'admin') { showToast('Solo administradores pueden configurar regiones', 'error'); return; }
   const data = DB.get();
   const r = data.regionData[regionName];
   if (!r) return;
@@ -3219,6 +3261,7 @@ function deleteRegion(regionName) {
 }
 
 function openEditGlobalTotal() {
+  if (AppState.currentUser.role !== 'admin') { showToast('Acceso denegado', 'error'); return; }
   const data = DB.get();
   // Calculate default sums
   const regions = data.regionData;
@@ -3365,9 +3408,9 @@ function renderManage(container) {
         <td style="font-size:12px">Peso: ${pkr.weightInOKR}%</td>
         <td><strong>${pp.toFixed(0)}%</strong></td>
         <td style="white-space:nowrap">
-          <button class="btn btn-ghost btn-sm" style="color:#0ea5e9" onclick="openSharePKR('${okr.id}','${pkr.id}')">🔗 Compartir</button>
-          <button class="btn btn-ghost btn-sm" onclick="openPKREdit('${pkr.id}')">✎ Editar</button>
-          <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deletePKR('${okr.id}','${pkr.id}')">✕</button>
+          ${Utils.getPKRPermission(pkr.id) >= 4 ? `<button class="btn btn-ghost btn-sm" style="color:#0ea5e9" onclick="openSharePKR('${okr.id}','${pkr.id}')">🔗 Compartir</button>` : ''}
+          ${Utils.getPKRPermission(pkr.id) >= 3 ? `<button class="btn btn-ghost btn-sm" onclick="openPKREdit('${pkr.id}')">✎ Editar</button>` : ''}
+          ${Utils.getPKRPermission(pkr.id) >= 4 ? `<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deletePKR('${okr.id}','${pkr.id}')">✕</button>` : ''}
         </td>
       </tr>`);
 
@@ -3383,8 +3426,8 @@ function renderManage(container) {
           <td style="font-size:12px">Peso: ${tkr.weightInPKR}%</td>
           <td><strong>${tp.toFixed(0)}%</strong></td>
           <td style="white-space:nowrap">
-            <button class="btn btn-ghost btn-sm" onclick="openTKREdit('${pkr.id}','${tkr.id}')">✎ Editar</button>
-            <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteTKR('${pkr.id}','${tkr.id}')">✕</button>
+            ${Utils.getPKRPermission(pkr.id) >= 2 ? `<button class="btn btn-ghost btn-sm" onclick="openTKREdit('${pkr.id}','${tkr.id}')">✎ Editar</button>` : ''}
+            ${Utils.getPKRPermission(pkr.id) >= 4 ? `<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteTKR('${pkr.id}','${tkr.id}')">✕</button>` : ''}
           </td>
         </tr>`);
 
@@ -3407,8 +3450,8 @@ function renderManage(container) {
               </div>
             </td>
             <td style="white-space:nowrap">
-              <button class="btn btn-ghost btn-sm" onclick="openKAEdit('${ka.id}')">✎ Editar</button>
-              <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteKA('${tkr.id}','${ka.id}')">✕</button>
+              ${Utils.getPKRPermission(pkr.id) >= 1 ? `<button class="btn btn-ghost btn-sm" onclick="openKAEdit('${ka.id}')">✎ Editar</button>` : ''}
+              ${Utils.getPKRPermission(pkr.id) >= 4 ? `<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteKA('${tkr.id}','${ka.id}')">✕</button>` : ''}
             </td>
           </tr>`);
         });
@@ -3427,7 +3470,7 @@ function renderManage(container) {
             Meta: <strong style="color:#10b981">${tkr.target} ${tkr.unit}</strong>
           </td>
           <td style="white-space:nowrap">
-            <button class="btn btn-ghost btn-sm" onclick="openIndicadorEdit('${pkr.id}','${tkr.id}')">✎ Editar</button>
+            ${Utils.getPKRPermission(pkr.id) >= 1 ? `<button class="btn btn-ghost btn-sm" onclick="openIndicadorEdit('${pkr.id}','${tkr.id}')">✎ Editar</button>` : ''}
           </td>
         </tr>`);
       });
@@ -3867,6 +3910,7 @@ function saveOKR(id) {
 }
 
 function openPKREdit(pkrId) {
+  if (Utils.getPKRPermission(pkrId) < 3) { showToast('Acceso insuficiente para editar PKR', 'error'); return; }
   const data = DB.get();
   let pkr = null;
   data.okrs.forEach(o => o.projectKRs.forEach(p => { if (p.id === pkrId) pkr = p; }));
@@ -3918,6 +3962,7 @@ function savePKR(pkrId) {
 }
 
 function openSharePKR(okrId, pkrId) {
+  if (Utils.getPKRPermission(pkrId) < 4) { showToast('Solo administradores pueden gestionar enlaces', 'error'); return; }
   const data = DB.get();
   let pkr = null;
   data.okrs.forEach(o => { if (o.id === okrId) { o.projectKRs.forEach(p => { if (p.id === pkrId) pkr = p; }) } });
@@ -4027,6 +4072,7 @@ window.removeSharePKR = function (okrId, pkrId, email) {
 };
 
 function openTKREdit(pkrId, tkrId) {
+  if (Utils.getPKRPermission(pkrId) < 2) { showToast('Acceso insuficiente para editar TKR', 'error'); return; }
   const data = DB.get();
   let tkr = null;
   data.okrs.forEach(o => o.projectKRs.forEach(p => { if (p.id === pkrId) p.tkrs.forEach(t => { if (t.id === tkrId) tkr = t; }); }));
