@@ -2229,6 +2229,9 @@ const DB = (() => {
 
   async function load() {
     try {
+      if (!window.dbFirestore) {
+        throw new Error("Firestore no inicializado");
+      }
       console.log("📥 Cargando datos desde Firestore...");
       const doc = await window.dbFirestore.collection(COLLECTION).doc(DOC_ID).get();
       if (doc.exists) {
@@ -2250,12 +2253,16 @@ const DB = (() => {
   async function save() {
     if (!_data) return;
     try {
-      await window.dbFirestore.collection(COLLECTION).doc(DOC_ID).set(_data);
+      if (window.dbFirestore) {
+        await window.dbFirestore.collection(COLLECTION).doc(DOC_ID).set(_data);
+        console.log("💾 Datos sincronizados con Firestore");
+        showToast('Cambios guardados en la nube ✓', 'success', 2000);
+      }
       localStorage.setItem(DB_KEY, JSON.stringify(_data));
-      console.log("💾 Datos sincronizados con Firestore");
     } catch (err) {
       console.error("❌ Error guardando en Firestore:", err);
       localStorage.setItem(DB_KEY, JSON.stringify(_data));
+      showToast('Guardado localmente (error en nube)', 'warning');
     }
   }
 
