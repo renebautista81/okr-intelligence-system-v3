@@ -3066,15 +3066,18 @@ function renderHeatmapPage(container) {
     </div>
 
     <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
-      <div class="kpi-card" style="--kpi-accent:var(--brand-primary)">
+      <div class="kpi-card" style="--kpi-accent:var(--brand-primary); position:relative">
+        <button class="btn btn-ghost btn-sm" style="position:absolute; top:8px; right:8px; padding:4px" onclick="openEditGlobalTotal()" title="Editar Totales Globales">✎</button>
         <div class="kpi-label">Total matrículas nacionales</div>
-        <div class="kpi-value">${totalCurrent.toLocaleString()}</div>
-        <div class="kpi-delta ${totalCurrent / totalTarget >= 0.9 ? 'pos' : 'neg'}">Meta: ${totalTarget.toLocaleString()} · ${(totalCurrent / totalTarget * 100).toFixed(0)}%</div>
+        <div class="kpi-value">${(data.heatmapGlobal?.current || totalCurrent).toLocaleString()}</div>
+        <div class="kpi-delta ${(data.heatmapGlobal?.current || totalCurrent) / (data.heatmapGlobal?.target || totalTarget) >= 0.9 ? 'pos' : 'neg'}">
+          Meta: ${(data.heatmapGlobal?.target || totalTarget).toLocaleString()} · ${((data.heatmapGlobal?.current || totalCurrent) / (data.heatmapGlobal?.target || totalTarget) * 100).toFixed(0)}%
+        </div>
       </div>
       <div class="kpi-card" style="--kpi-accent:#10b981">
         <div class="kpi-label">Regiones en meta (≥70%)</div>
         <div class="kpi-value">${Object.values(regions).filter(r => Utils.pct(r.current, r.target) >= 70).length}<span class="kpi-unit">/ ${Object.keys(regions).length}</span></div>
-        <div class="kpi-delta pos">Bogotá y Medellín lideran</div>
+        <div class="kpi-delta pos">Análisis por región individual</div>
       </div>
       <div class="kpi-card" style="--kpi-accent:#ef4444">
         <div class="kpi-label">Regiones críticas (&lt;40%)</div>
@@ -3142,7 +3145,11 @@ function openEditRegion(regionName) {
     </div>
   `).join('');
 
-  Modal.open(`Editar Panel: ${regionName}`, `
+  Modal.open(`Editar Región: ${regionName}`, `
+    <div class="form-group" style="margin-bottom:15px">
+      <label class="form-label">Nombre de la Ciudad / Región</label>
+      <input type="text" class="form-control" id="er-name" value="${regionName}">
+    </div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:15px">
       <div class="form-group">
         <label class="form-label">Matrículas Actuales</label>
@@ -3161,31 +3168,108 @@ function openEditRegion(regionName) {
     </div>
   `,
     `<button class="btn btn-secondary" onclick="Modal.close()">Cancelar</button>
-     <button class="btn btn-primary" onclick="saveEditRegion('${regionName}')">Actualizar Panel</button>`);
+     <button class="btn btn-ghost" style="color:var(--red)" onclick="deleteRegion('${regionName}')">Eliminar Región</button>
+     <button class="btn btn-primary" onclick="saveEditRegion('${regionName}')">Guardar Cambios</button>`);
 }
 
-function saveEditRegion(regionName) {
+function saveEditRegion(oldName) {
+  const newName = document.getElementById('er-name')?.value.trim();
   const current = parseFloat(document.getElementById('er-current')?.value);
   const target = parseFloat(document.getElementById('er-target')?.value);
 
   const trendInputs = document.querySelectorAll('.trend-input');
   const trend = Array.from(trendInputs).map(input => parseFloat(input.value));
 
-  if (isNaN(current) || isNaN(target) || trend.some(isNaN)) {
-    showToast('Todos los campos deben ser numéricos', 'error');
+  if (!newName || isNaN(current) || isNaN(target) || trend.some(isNaN)) {
+    showToast('Todos los campos son obligatorios y deben ser válidos', 'error');
     return;
   }
 
   DB.update(data => {
-    if (data.regionData[regionName]) {
-      data.regionData[regionName].current = current;
-      data.regionData[regionName].target = target;
-      data.regionData[regionName].trend = trend;
+    const regionData = data.regionData[oldName];
+    if (regionData) {
+      const updatedData = { ...regionData, current, target, trend };
+      if (oldName !== newName) {
+        delete data.regionData[oldName];
+        data.regionData[newName] = updatedData;
+      } else {
+        data.regionData[oldName] = updatedData;
+      }
     }
   });
 
   Modal.close();
-  showToast('Datos de región actualizados ✓', 'success');
+  showToast('Región actualizada ✓', 'success');
+  renderHeatmapPage(document.getElementById('page-content'));
+}
+
+function deleteRegion(regionName) {
+  if (confirm(`¿Estás seguro de eliminar la región ${regionName}?`)) {
+    DB.update(data => {
+      delete data.regionData[regionName];
+    });
+    Modal.close();
+    showToast('Región eliminada', 'info');
+    renderHeatmapPage(document.getElementById('page-content'));
+  }
+}
+
+function openEditGlobalTotal() {
+  const data = DB.get();
+  // Calculate default sums
+  const regions = data.regionData;
+  const totalCurrent = Object.values(regions).reduce((s, r) => s + r.current, 0);
+  const totalTarget = Object.values(regions).reduce((s, r) => s + r.target, 0);
+
+  const currentVal = data.heatmapGlobal?.current !== undefined ? data.heatmapGlobal.current : totalCurrent;
+  const targetVal = data.heatmapGlobal?.target !== undefined ? data.heatmapGlobal.target : totalTarget;
+
+  Modal.open('Editar Totales Nacionales', `
+    <p style="font-size:12px; color:var(--text-4); margin-bottom:15px">Sobreescribe los valores totales si no coinciden con la suma de las regiones.</p>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Total Matrículas (Nacional)</label>
+        <input type="number" class="form-control" id="egt-current" value="${currentVal}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Meta Total (Nacional)</label>
+        <input type="number" class="form-control" id="egt-target" value="${targetVal}">
+      </div>
+    </div>
+    <div style="margin-top:10px; font-size:11px; color:var(--text-3)">
+      Valores actuales calculados por regiones: <strong>${totalCurrent.toLocaleString()} / ${totalTarget.toLocaleString()}</strong>
+    </div>
+  `, `
+    <button class="btn btn-secondary" onclick="Modal.close()">Cancelar</button>
+    <button class="btn btn-ghost" onclick="resetGlobalTotal()">Resetear Automático</button>
+    <button class="btn btn-primary" onclick="saveEditGlobalTotal()">Guardar Totales</button>
+  `);
+}
+
+function saveEditGlobalTotal() {
+  const current = parseFloat(document.getElementById('egt-current')?.value);
+  const target = parseFloat(document.getElementById('egt-target')?.value);
+
+  if (isNaN(current) || isNaN(target)) {
+    showToast('Valores numéricos requeridos', 'error');
+    return;
+  }
+
+  DB.update(data => {
+    data.heatmapGlobal = { current, target };
+  });
+
+  Modal.close();
+  showToast('KPI de matrículas nacionales actualizado ✓', 'success');
+  renderHeatmapPage(document.getElementById('page-content'));
+}
+
+function resetGlobalTotal() {
+  DB.update(data => {
+    delete data.heatmapGlobal;
+  });
+  Modal.close();
+  showToast('KPI restablecido a la suma regional', 'info');
   renderHeatmapPage(document.getElementById('page-content'));
 }
 
