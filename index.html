@@ -14,7 +14,7 @@
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=7"></script>
+  <script src="firebase-config.js?v=9"></script>
 </head>
 
 <body>
@@ -40,8 +40,8 @@
     <div class="main-area">
       <header class="topbar">
         <div>
-          <div class="topbar-title" id="topbar-title">Cargando…</div>
-          <div class="topbar-sub" id="topbar-sub"></div>
+          <div class="topbar-title" id="topbar-title">Panel Estratégico</div>
+          <div class="topbar-sub" id="topbar-sub">Sistema de Inteligencia de Objetivos</div>
         </div>
         <div class="topbar-spacer"></div>
         <div class="topbar-actions">
@@ -50,24 +50,31 @@
             onchange="AppState.activeOkrId = this.value; renderPage(AppState.currentPage)">
             <option value="all">Todos los OKRs (Global)</option>
           </select>
+
+          <button class="btn btn-primary btn-sm" onclick="DB.save()" title="Guardar cambios en la nube">💾 Guardar
+            Cambios</button>
+
+          <div style="width:1px; height:24px; background:var(--border); margin:0 8px"></div>
+
           <button class="btn btn-secondary btn-sm" onclick="exportData()" title="Descargar JSON">↓ Exportar</button>
-          <label class="btn btn-secondary btn-sm" style="margin: 0; cursor: pointer" title="Cargar JSON">
-            ↑ JSON <input type="file" id="import-file" style="display: none" accept=".json"
-              onchange="importData(event)">
-          </label>
+
           <label class="btn btn-secondary btn-sm" style="margin: 0; cursor: pointer" title="Cargar Excel">
-            ↑ Excel <input type="file" id="import-excel-file" style="display: none" accept=".xlsx, .xls"
+            ↑ Importar Excel <input type="file" id="import-excel-file" style="display: none" accept=".xlsx, .xls"
               onchange="importExcelData(event)">
           </label>
-          <button class="btn btn-primary btn-sm" onclick="forceSaveData()" title="Guardar cambios localmente">💾
-            Guardar</button>
+
           <button class="btn btn-secondary btn-sm" onclick="navigate('alerts')">⚑ Alertas</button>
-          <button class="btn btn-primary btn-sm" onclick="openNewCheckin()">+ Check-in</button>
+
           <button class="btn btn-ghost btn-sm" title="Restablecer datos"
             onclick="if(confirm('¿Restablecer datos de demostración?')){DB.reset();init();showToast('Datos restablecidos','info')}">↺</button>
         </div>
       </header>
-      <main class="page-content" id="page-content"></main>
+      <main class="page-content" id="page-content">
+        <div class="loading-state">
+          <div class="spinner"></div>
+          <p>Conectando con base de datos...</p>
+        </div>
+      </main>
     </div>
   </div>
 
@@ -86,8 +93,8 @@
   <!-- Toast -->
   <div id="toast-container"></div>
 
-  <!-- Single bundled script — avoids file:// multi-script loading issues -->
-  <script src="bundle.js?v=8"></script>
+  <!-- Single bundled script -->
+  <script src="bundle.js?v=9"></script>
 </body>
 
 </html>
