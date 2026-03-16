@@ -3020,7 +3020,14 @@ function renderHeatmapPage(container) {
     const barColor = pct >= 70 ? '#10b981' : pct >= 40 ? '#f59e0b' : '#ef4444';
     const trend = rd.trend;
     const delta = trend.length >= 2 ? trend[trend.length - 1] - trend[trend.length - 2] : 0;
-    return `<div class="heatmap-cell ${cls}" style="padding:20px 18px">
+
+    const canEdit = AppState.currentUser.role === 'admin' || AppState.currentUser.role === 'project_lead';
+    const editBtn = canEdit
+      ? `<button class="btn btn-ghost btn-sm" style="position:absolute;top:10px;right:10px;padding:4px;color:#fff;background:rgba(0,0,0,0.2)" onclick="openEditRegion('${name}')" title="Editar Región">✎</button>`
+      : '';
+
+    return `<div class="heatmap-cell ${cls}" style="padding:20px 18px;position:relative">
+      ${editBtn}
       <div class="heatmap-region" style="font-size:14px;margin-bottom:10px">${name}</div>
       <div class="heatmap-pct" style="font-size:34px">${pct.toFixed(0)}%</div>
       <div style="display:flex;justify-content:space-between;margin-top:6px">
@@ -3112,6 +3119,38 @@ function drawRegionalChart(data) {
       }
     }
   });
+}
+
+function openEditRegion(regionName) {
+  const data = DB.get();
+  const r = data.regionData[regionName];
+  if (!r) return;
+  Modal.open(`Editar Región: ${regionName}`, `
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Matrículas Actuales</label>
+        <input type="number" class="form-control" id="er-current" value="${r.current}"></div>
+      <div class="form-group"><label class="form-label">Meta Final</label>
+        <input type="number" class="form-control" id="er-target" value="${r.target}"></div>
+    </div>`,
+    `<button class="btn btn-secondary" onclick="Modal.close()">Cancelar</button>
+     <button class="btn btn-primary" onclick="saveEditRegion('${regionName}')">Guardar</button>`);
+}
+
+function saveEditRegion(regionName) {
+  const current = parseFloat(document.getElementById('er-current')?.value);
+  const target = parseFloat(document.getElementById('er-target')?.value);
+  if (isNaN(current) || isNaN(target)) { showToast('Valores numéricos requeridos', 'error'); return; }
+
+  DB.update(data => {
+    if (data.regionData[regionName]) {
+      data.regionData[regionName].current = current;
+      data.regionData[regionName].target = target;
+      data.regionData[regionName].trend[data.regionData[regionName].trend.length - 1] = current;
+    }
+  });
+
+  Modal.close(); showToast('Región actualizada ✓', 'success');
+  renderHeatmapPage(document.getElementById('page-content'));
 }
 
 // ── Alerts View ───────────────────────────────
@@ -4146,7 +4185,7 @@ function renderGovernance(container) {
   container.innerHTML = `
     <div class="section-header">
       <div><div class="section-title">Gobernanza y Roles</div><div class="section-sub">Estructura de responsabilidad y permisos del sistema</div></div>
-      <button class="btn btn-primary btn-sm" onclick="showToast('Invitación enviada al nuevo usuario','success')">+ Invitar usuario</button>
+      <button class="btn btn-primary btn-sm" onclick="openAddUser()">+ Invitar usuario</button>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
@@ -4226,6 +4265,7 @@ function openEditUser(userId) {
     <div class="form-group"><label class="form-label">Rol</label>
       <select class="form-control" id="eu-role">${roleOpts}</select></div>`,
     `<button class="btn btn-secondary" onclick="Modal.close()">Cancelar</button>
+     <button class="btn btn-ghost" style="color:var(--red)" onclick="deleteUser('${userId}')">Eliminar Usuario</button>
      <button class="btn btn-primary" onclick="saveEditUser('${userId}')">Guardar cambios</button>`);
 }
 
@@ -4246,6 +4286,48 @@ function saveEditUser(userId) {
   }
   Modal.close(); showToast('Usuario actualizado ✓');
   renderGovernance(document.getElementById('page-content'));
+}
+
+function openAddUser() {
+  if (AppState.currentUser.role !== 'admin') { showToast('Solo administradores pueden invitar usuarios', 'error'); return; }
+  const roleOpts = ['admin', 'project_lead', 'tkr_owner', 'ka_owner', 'viewer']
+    .map(r => `<option value="${r}">${Utils.roleLabel[r] || r}</option>`).join('');
+  Modal.open('Invitar Usuario', `
+    <div class="form-group"><label class="form-label">Nombre completo</label>
+      <input type="text" class="form-control" id="nu-name" placeholder="Ej: Juan Pérez"></div>
+    <div class="form-group"><label class="form-label">Correo electrónico</label>
+      <input type="email" class="form-control" id="nu-email" placeholder="Ej: jperez@ean.edu.co"></div>
+    <div class="form-group"><label class="form-label">Rol inicial</label>
+      <select class="form-control" id="nu-role">${roleOpts}</select></div>`,
+    `<button class="btn btn-secondary" onclick="Modal.close()">Cancelar</button>
+     <button class="btn btn-primary" onclick="saveAddUser()">Enviar invitación</button>`);
+}
+
+function saveAddUser() {
+  const name = document.getElementById('nu-name')?.value.trim();
+  const email = document.getElementById('nu-email')?.value.trim();
+  const role = document.getElementById('nu-role')?.value;
+  if (!name || !email) { showToast('Nombre y correo son requeridos', 'error'); return; }
+
+  DB.update(data => {
+    data.users.push({ id: Utils.uuid(), name, email, role });
+  });
+
+  Modal.close(); showToast('Invitación enviada ✓', 'success');
+  renderGovernance(document.getElementById('page-content'));
+}
+
+function deleteUser(userId) {
+  if (AppState.currentUser.role !== 'admin') { showToast('Solo administradores pueden eliminar usuarios', 'error'); return; }
+  if (userId === AppState.currentUser.id) { showToast('No puedes eliminar tu propia cuenta', 'error'); return; }
+  if (confirm('¿Estás seguro de eliminar este usuario? No podrá acceder al sistema.')) {
+    DB.update(data => {
+      data.users = data.users.filter(u => u.id !== userId);
+    });
+    Modal.close();
+    showToast('Usuario eliminado', 'info');
+    renderGovernance(document.getElementById('page-content'));
+  }
 }
 
 // ── Export View ───────────────────────────────
@@ -6009,12 +6091,12 @@ function saveNewOKR() {
 function openNewPKR() {
   const data = DB.get();
   if (!data.okrs.length) { showToast('Primero crea un OKR Estratégico', 'warning'); return; }
-  const okrOpts = data.okrs.map(o => `< option value = "${o.id}" > ${o.name.substring(0, 60)}…</option > `).join('');
-  const userOpts = data.users.map(u => `< option value = "${u.name}" ></option > `).join('');
+  const okrOpts = data.okrs.map(o => `<option value="${o.id}">${o.name.substring(0, 60)}…</option>`).join('');
+  const userOpts = data.users.map(u => `<option value="${u.name}"></option>`).join('');
   const typeOpts = ['Posicionamiento', 'Implementación', 'Formación', 'Reputación', 'Operativo']
-    .map(t => `< option > ${t}</option > `).join('');
+    .map(t => `<option>${t}</option>`).join('');
   Modal.open('Nuevo KR Estratégico (Project KR)', `
-  < div class="form-group" ><label class="form-label">OKR padre</label>
+  <div class="form-group"><label class="form-label">OKR padre</label>
       <select class="form-control" id="pkr-parent">${okrOpts}</select></div >
     <div class="form-group"><label class="form-label">Nombre del KR Estratégico</label>
       <textarea class="form-control" id="pkr-name" rows="2" placeholder="Ej: Posicionar el modelo como referente nacional…"></textarea></div>
@@ -6044,7 +6126,7 @@ function openNewPKR() {
     </div>
     <div class="form-group"><label class="form-label">Fuente de verificación</label>
       <input type="text" class="form-control" id="pkr-source" placeholder="Ej: Sistema Banner + Encuesta anual"></div>`,
-    `< button class="btn btn-secondary" onclick = "Modal.close()" > Cancelar</button >
+    `<button class="btn btn-secondary" onclick="Modal.close()">Cancelar</button>
   <button class="btn btn-primary" onclick="saveNewPKR()">Crear KR Estratégico</button>`);
 }
 
@@ -6078,14 +6160,14 @@ function saveNewPKR() {
 function openNewTKR() {
   const data = DB.get();
   const pkrOpts = data.okrs.flatMap(o => o.projectKRs.map(p =>
-    `< option value = "${o.id}|${p.id}" > ${o.name.substring(0, 30)}… → ${p.name.substring(0, 35)}…</option > `
+    `<option value="${o.id}|${p.id}">${o.name.substring(0, 30)}… → ${p.name.substring(0, 35)}…</option>`
   )).join('');
   if (!pkrOpts) { showToast('Primero crea un KR Estratégico', 'warning'); return; }
-  const userOpts = data.users.map(u => `< option value = "${u.name}" ></option > `).join('');
+  const userOpts = data.users.map(u => `<option value="${u.name}"></option>`).join('');
   const perOpts = ['Diario', 'Semanal', 'Quincenal', 'Mensual', 'Bimestral', 'Trimestral', 'Semestral', 'Única vez']
-    .map(p => `< option > ${p}</option > `).join('');
+    .map(p => `<option>${p}</option>`).join('');
   Modal.open('Nuevo KR Táctico (TKR)', `
-  < div class="form-group" ><label class="form-label">KR Estratégico padre</label>
+  <div class="form-group"><label class="form-label">KR Estratégico padre</label>
       <select class="form-control" id="tkr-parent">${pkrOpts}</select></div >
     <div class="form-group"><label class="form-label">Nombre del KR Táctico</label>
       <textarea class="form-control" id="tkr-name" rows="2" placeholder="Ej: Incrementar en 25% el reconocimiento del modelo…"></textarea></div>
@@ -6113,7 +6195,7 @@ function openNewTKR() {
     </div>
     <div class="form-group"><label class="form-label">Responsable</label>
       <input type="text" class="form-control" id="tkr-resp" list="users-list" placeholder="Escribir o elegir..."><datalist id="users-list">${userOpts}</datalist></div>`,
-    `< button class="btn btn-secondary" onclick = "Modal.close()" > Cancelar</button >
+    `<button class="btn btn-secondary" onclick="Modal.close()">Cancelar</button>
   <button class="btn btn-primary" onclick="saveNewTKR()">Crear KR Táctico</button>`);
 }
 
@@ -6150,15 +6232,15 @@ function saveNewTKR() {
 function openNewKA() {
   const data = DB.get();
   const tkrOpts = data.okrs.flatMap(o => o.projectKRs.flatMap(p => p.tkrs.map(t =>
-    `< option value = "${p.id}|${t.id}" > ${t.name.substring(0, 55)}…</option > `
+    `<option value="${p.id}|${t.id}">${t.name.substring(0, 55)}…</option>`
   ))).join('');
   if (!tkrOpts) { showToast('Primero crea un KR Táctico', 'warning'); return; }
-  const userOpts = data.users.map(u => `< option value = "${u.name}" ></option > `).join('');
+  const userOpts = data.users.map(u => `<option value="${u.name}"></option>`).join('');
   const regionOpts = ['Bogotá', 'Medellín', 'Cali', 'Barranquilla', 'Bucaramanga', 'Nacional']
-    .map(r => `< option > ${r}</option > `).join('');
+    .map(r => `<option>${r}</option>`).join('');
   Modal.open('Nueva Key Action', `
-  < div class="form-group" ><label class="form-label">KR Táctico padre</label>
-      <select class="form-control" id="ka-parent">${tkrOpts}</select></div >
+  <div class="form-group"><label class="form-label">KR Táctico padre</label>
+      <select class="form-control" id="ka-parent">${tkrOpts}</select></div>
     <div class="form-group"><label class="form-label">Descripción de la acción</label>
       <textarea class="form-control" id="ka-description" rows="3" placeholder="Ej: Diseñar y ejecutar campaña de posicionamiento en medios digitales…"></textarea></div>
     <div class="form-row">
@@ -6183,7 +6265,7 @@ function openNewKA() {
     </div>
     <div class="form-group"><label class="form-label">Notas / Contexto</label>
       <textarea class="form-control" id="ka-notes" rows="2" placeholder="Observaciones iniciales…"></textarea></div>`,
-    `< button class="btn btn-secondary" onclick = "Modal.close()" > Cancelar</button >
+    `<button class="btn btn-secondary" onclick="Modal.close()">Cancelar</button>
   <button class="btn btn-primary" onclick="saveNewKA()">Crear Key Action</button>`);
 }
 
@@ -6220,15 +6302,15 @@ function saveNewKA() {
 function openNewIndicador() {
   const data = DB.get();
   const tkrOpts = data.okrs.flatMap(o => o.projectKRs.flatMap(p => p.tkrs.map(t =>
-    `< option value = "${p.id}|${t.id}" > ${t.name.substring(0, 60)}…</option > `
+    `<option value="${p.id}|${t.id}">${t.name.substring(0, 60)}…</option>`
   ))).join('');
   if (!tkrOpts) { showToast('Primero crea un KR Táctico', 'warning'); return; }
   Modal.open('Editar Indicadores / Metas', `
-  < p style = "font-size:12.5px;color:var(--text-3);margin-bottom:16px" > Selecciona el KR Táctico al que deseas ajustar los indicadores y metas de seguimiento.</p >
+  <p style="font-size:12.5px;color:var(--text-3);margin-bottom:16px">Selecciona el KR Táctico al que deseas ajustar los indicadores y metas de seguimiento.</p>
     <div class="form-group"><label class="form-label">KR Táctico</label>
       <select class="form-control" id="ind-tkr" onchange="loadIndicadorFields(this.value)">${tkrOpts}</select></div>
     <div id="ind-fields"></div>`,
-    `< button class="btn btn-secondary" onclick = "Modal.close()" > Cancelar</button >
+    `<button class="btn btn-secondary" onclick="Modal.close()">Cancelar</button>
   <button class="btn btn-primary" onclick="saveIndicador()">Guardar Indicadores</button>`);
   // Auto-load first TKR
   setTimeout(() => {
@@ -6244,7 +6326,7 @@ function loadIndicadorFields(val) {
   data.okrs.forEach(o => o.projectKRs.forEach(p => { if (p.id === pkrId) p.tkrs.forEach(t => { if (t.id === tkrId) tkr = t; }); }));
   if (!tkr) return;
   document.getElementById('ind-fields').innerHTML = `
-    < div class="form-group" ><label class="form-label">Métrica específica</label>
+    <div class="form-group"><label class="form-label">Métrica específica</label>
       <input type="text" class="form-control" id="ind-metric" value="${tkr.metric}"></div>
     <div class="form-group"><label class="form-label">Fórmula de cálculo</label>
       <input type="text" class="form-control" id="ind-formula" value="${tkr.formula}"></div>
