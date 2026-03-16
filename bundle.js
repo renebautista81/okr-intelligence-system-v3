@@ -2457,6 +2457,10 @@ const Utils = {
   },
   uuid() {
     return 'id' + Math.random().toString(36).substr(2, 9);
+  },
+  sendEmail({ to, subject, body }) {
+    const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailto;
   }
 };
 // ── Dashboard ─────────────────────────────────
@@ -3952,7 +3956,8 @@ function openSharePKR(okrId, pkrId) {
         <input type="email" class="form-control" id="share-email" placeholder="usuario@ean.edu.co"></div>
         <div class="form-group" style="margin-bottom:10px"><label class="form-label">Permisos</label>
         <select class="form-control" id="share-perm">${permOpts}</select></div>
-        <button class="btn btn-primary btn-sm" style="width:100%" onclick="addSharePKR('${okrId}', '${pkrId}')">Invitar y crear enlace</button>
+        <p style="font-size:11px; color:var(--text-3); margin-bottom:10px">ℹ Se abrirá tu aplicación de correo para enviar el enlace.</p>
+        <button class="btn btn-primary btn-sm" style="width:100%" onclick="addSharePKR('${okrId}', '${pkrId}')">Generar y Compartir por Correo</button>
     </div>
 
     <div class="form-group"><label class="form-label">Accesos y Enlaces Remotos</label>
@@ -3964,6 +3969,11 @@ function openSharePKR(okrId, pkrId) {
 window.addSharePKR = function (okrId, pkrId) {
   const email = document.getElementById('share-email').value.trim();
   if (!email) { showToast('Ingresa un correo', 'warning'); return; }
+
+  const data = DB.get();
+  let pkrName = 'KR Estratégico';
+  data.okrs.forEach(o => o.projectKRs.forEach(p => { if (p.id === pkrId) pkrName = p.name; }));
+
   const permSelect = document.getElementById('share-perm');
   const permVal = permSelect.value;
   const permName = permSelect.options[permSelect.selectedIndex].text;
@@ -3984,7 +3994,16 @@ window.addSharePKR = function (okrId, pkrId) {
     });
   });
 
-  showToast('Invitación enviada y acceso otorgado', 'success');
+  const baseUrl = window.location.href.split('?')[0];
+  const remoteLink = `${baseUrl}?u=${encodeURIComponent(email)}`;
+
+  Utils.sendEmail({
+    to: email,
+    subject: `Invitación: Acceso a KR Estratégico - Universidad Ean`,
+    body: `Hola,\n\nSe te ha otorgado acceso con nivel "${permName}" al KR Estratégico:\n"${pkrName}"\n\nPuedes acceder directamente desde este enlace:\n${remoteLink}\n\nSaludos,\nSistema de Inteligencia OKR Ean Virtual`
+  });
+
+  showToast('Correo preparado y acceso otorgado ✓', 'success');
   // Refresh modal
   openSharePKR(okrId, pkrId);
   renderManage(document.getElementById('page-content'));
@@ -4418,9 +4437,10 @@ function openAddUser() {
     <div class="form-group"><label class="form-label">Correo electrónico</label>
       <input type="email" class="form-control" id="nu-email" placeholder="Ej: jperez@ean.edu.co"></div>
     <div class="form-group"><label class="form-label">Rol inicial</label>
-      <select class="form-control" id="nu-role">${roleOpts}</select></div>`,
+      <select class="form-control" id="nu-role">${roleOpts}</select></div>
+    <p style="font-size:11px; color:var(--text-3); margin-bottom:10px">ℹ Se abrirá tu aplicación de correo para enviar la invitación inicial.</p>`,
     `<button class="btn btn-secondary" onclick="Modal.close()">Cancelar</button>
-     <button class="btn btn-primary" onclick="saveAddUser()">Enviar invitación</button>`);
+     <button class="btn btn-primary" onclick="saveAddUser()">Invitar por Correo</button>`);
 }
 
 function saveAddUser() {
@@ -4433,7 +4453,14 @@ function saveAddUser() {
     data.users.push({ id: Utils.uuid(), name, email, role });
   });
 
-  Modal.close(); showToast('Invitación enviada ✓', 'success');
+  const baseUrl = window.location.href.split('?')[0];
+  Utils.sendEmail({
+    to: email,
+    subject: `Invitación al Sistema OKR Ean Virtual`,
+    body: `Hola ${name},\n\nHas sido invitado al Sistema de Inteligencia OKR de Ean Virtual con el rol de "${Utils.roleLabel[role]}".\n\nPuedes ingresar siguiendo este enlace:\n${baseUrl}\n\n¡Bienvenido!,\nGestión Estratégica Ean Virtual`
+  });
+
+  Modal.close(); showToast('Correo preparado e invitación registrada ✓', 'success');
   renderGovernance(document.getElementById('page-content'));
 }
 
