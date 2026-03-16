@@ -4301,7 +4301,7 @@ function openEditUser(userId) {
     <div class="form-group"><label class="form-label">Rol</label>
       <select class="form-control" id="eu-role">${roleOpts}</select></div>`,
     `<button class="btn btn-secondary" onclick="Modal.close()">Cancelar</button>
-     <button class="btn btn-ghost" style="color:var(--red)" onclick="deleteUser('${userId}')">Eliminar Usuario</button>
+     <button class="btn btn-ghost" style="color:var(--red)" onclick="confirmDeleteUser('${userId}')">Eliminar Usuario</button>
      <button class="btn btn-primary" onclick="saveEditUser('${userId}')">Guardar cambios</button>`);
 }
 
@@ -4353,24 +4353,33 @@ function saveAddUser() {
   renderGovernance(document.getElementById('page-content'));
 }
 
-function deleteUser(userId) {
-  if (AppState.currentUser.role !== 'admin') { showToast('Solo administradores pueden eliminar usuarios', 'error'); return; }
-  if (userId === AppState.currentUser.id) { showToast('No puedes eliminar tu propia cuenta', 'error'); return; }
+function confirmDeleteUser(userId) {
+  const data = DB.get();
+  const u = data.users.find(x => x.id === userId);
+  if (!u) return;
 
-  if (confirm('¿Estás seguro de eliminar este usuario? No podrá acceder al sistema.')) {
-    DB.update(data => {
-      const initialCount = data.users.length;
-      data.users = data.users.filter(u => u.id !== userId);
-      if (data.users.length === initialCount) {
-        console.warn("No se encontró el usuario para eliminar:", userId);
-      }
-    });
-    Modal.close();
-    showToast('Usuario eliminado con éxito', 'info');
-    // Forzar re-renderizado
-    const content = document.getElementById('page-content');
-    if (content) renderGovernance(content);
-  }
+  Modal.open('Confirmar Eliminación', `
+    <div style="text-align:center; padding: 20px 0">
+      <div style="font-size: 48px; margin-bottom: 15px">⚠️</div>
+      <p style="font-size: 15px; color: var(--text-2); line-height: 1.5">
+        ¿Estás seguro de eliminar a <strong>${u.name}</strong>?<br>
+        Esta acción no se puede deshacer y el usuario perderá acceso al sistema.
+      </p>
+    </div>
+  `, `
+    <button class="btn btn-secondary" onclick="openEditUser('${userId}')">Volver</button>
+    <button class="btn btn-primary" style="background:#ef4444; border-color:#ef4444" onclick="executeDeleteUser('${userId}')">Sí, Eliminar permanentemente</button>
+  `);
+}
+
+function executeDeleteUser(userId) {
+  DB.update(data => {
+    data.users = data.users.filter(u => u.id !== userId);
+  });
+  Modal.close();
+  showToast('Usuario eliminado correctamente', 'info');
+  const content = document.getElementById('page-content');
+  if (content) renderGovernance(content);
 }
 
 // ── Export View ───────────────────────────────
