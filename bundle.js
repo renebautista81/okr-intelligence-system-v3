@@ -5542,20 +5542,20 @@ function renderAlerts(container) {
   const high = alerts.filter(a => a.severity === 'alta');
 
   const alertHTML = alerts.length === 0
-    ? `< div class="empty-state" ><div class="es-icon">✅</div><div class="es-title">Sin alertas activas</div><div class="es-sub">Todos los indicadores están dentro de los umbrales esperados.</div></div > `
-    : alerts.map(a => `< div class="alert-item sev-${a.severity}" >
+    ? `<div class="empty-state"><div class="es-icon">✅</div><div class="es-title">Sin alertas activas</div><div class="es-sub">Todos los indicadores están dentro de los umbrales esperados.</div></div>`
+    : alerts.map(a => `<div class="alert-item sev-${a.severity}">
         <div class="alert-icon">${a.icon}</div>
         <div class="alert-content">
           <div class="alert-title">${a.title}</div>
           <div class="alert-desc">${a.desc}</div>
           <div class="alert-meta">${a.okr ? `OKR: ${a.okr} ·` : ''} Detectado: ${a.date}</div>
         </div>
-      </div > `).join('');
+      </div>`).join('');
 
   container.innerHTML = `
-  < div class="section-header" >
+  <div class="section-header">
     <div><div class="section-title">Sistema de Alertas Estratégicas</div><div class="section-sub">Desvíos detectados automáticamente según umbrales configurados</div></div>
-    </div >
+    </div>
     <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
       <div class="kpi-card" style="--kpi-accent:#ef4444">
         <div class="kpi-label">Alertas críticas</div>
@@ -5595,7 +5595,7 @@ function renderGovernance(container) {
     const color = roleColors[u.role] || '#94a3b8';
     const initials = u.name.split(' ').map(w => w[0]).slice(0, 2).join('');
     const perms = (rolePerms[u.role] || []).map(p => `< span class="perm-chip" > ${p}</span > `).join('');
-    return `< div class="role-card" >
+    return `<div class="role-card">
       <div class="role-avatar" style="background:${color}">${initials}</div>
       <div style="flex:1;min-width:0">
         <div class="role-name">${u.name}</div>
@@ -5603,14 +5603,14 @@ function renderGovernance(container) {
         <div class="role-perms" style="margin-top:6px">${perms}</div>
       </div>
       <button class="btn btn-ghost btn-sm" onclick="openEditUser('${u.id}')" title="Editar usuario">✎</button>
-    </div > `;
+    </div>`;
   }).join('');
 
   container.innerHTML = `
-  < div class="section-header" >
+  <div class="section-header">
       <div><div class="section-title">Gobernanza y Roles</div><div class="section-sub">Estructura de responsabilidad y permisos del sistema</div></div>
       <button class="btn btn-primary btn-sm" onclick="showToast('Invitación enviada al nuevo usuario','success')">+ Invitar usuario</button>
-    </div >
+    </div>
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
     <div class="card">
@@ -5677,9 +5677,9 @@ function switchUser(userId) {
 // ── Export View ───────────────────────────────
 function renderExport(container) {
   container.innerHTML = `
-  < div class="section-header" >
+  <div class="section-header">
     <div><div class="section-title">Exportar Reportes Ejecutivos</div><div class="section-sub">Descarga de informes en múltiples formatos</div></div>
-    </div >
+    </div>
 
     <div style="display:flex;gap:16px;flex-wrap:wrap">
       <div class="export-card" onclick="exportPDF()">
@@ -5715,15 +5715,15 @@ function buildExportPreview() {
   const ci = Calc.compositeIndex(data.compositeIndex);
   const rows = data.okrs.map(okr => {
     const p = Calc.okrProgress(okr);
-    return `< tr >
+    return `<tr>
       <td class="td-name">${okr.name.substring(0, 60)}…</td>
       <td>${okr.responsibleUnit}</td>
       <td><strong>${p.toFixed(0)}%</strong></td>
       <td><span class="tl-badge ${Calc.trafficLight(p)}"><span class="dot"></span>${Calc.trafficLightLabel(p)}</span></td>
-    </tr > `;
+    </tr>`;
   }).join('');
   return `
-  < div style = "border:2px solid var(--border);border-radius:var(--radius-md);padding:24px;font-size:12.5px" >
+  <div style="border:2px solid var(--border);border-radius:var(--radius-md);padding:24px;font-size:12.5px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:16px;border-bottom:2px solid var(--border)">
         <div>
           <div style="font-size:18px;font-weight:800;color:var(--text-1)">Universidad EAN</div>
@@ -5742,7 +5742,7 @@ function buildExportPreview() {
         <strong>NPS:</strong> 48 puntos &nbsp;·&nbsp;
         <strong>Alianzas:</strong> 5 / 10
       </div>
-    </div > `;
+    </div>`;
 }
 
 function exportPDF() {
@@ -5787,7 +5787,7 @@ function renderManage(container) {
   const rows = [];
   data.okrs.forEach(okr => {
     const op = Calc.okrProgress(okr);
-    rows.push(`< tr style = "background:#f1f5f9" >
+    rows.push(`<tr style="background:#f1f5f9">
       <td style="padding:11px 8px 11px 14px">
         <span style="font-size:10px;font-weight:800;letter-spacing:.04em;color:#fff;background:${okr.color};padding:3px 8px;border-radius:100px">OKR</span>
       </td>
@@ -5805,11 +5805,11 @@ function renderManage(container) {
         <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteOKR('${okr.id}')">✕</button>
         ` : '<span style="color:var(--text-4); font-size:10px">Solo lectura</span>'}
       </td>
-    </tr > `);
+    </tr>`);
 
     okr.projectKRs.forEach(pkr => {
       const pp = Calc.pkrProgress(pkr);
-      rows.push(`< tr style = "background:#fff" >
+      rows.push(`<tr style="background:#fff">
         <td style="padding:10px 8px 10px 30px;color:var(--text-4);font-size:13px;cursor:pointer" onclick="toggleManagePKR('${pkr.id}')" title="Colapsar/Expandir"><span id="chevron-${pkr.id}" style="display:inline-block;transition:transform 0.2s;font-size:10px;margin-right:4px">▼</span>↳
           <span style="font-size:9.5px;font-weight:800;letter-spacing:.04em;color:#6366f1;background:#eef2ff;padding:2px 7px;border-radius:100px;margin-left:4px">KR Estratégico</span>
         </td>
@@ -5825,11 +5825,11 @@ function renderManage(container) {
           <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deletePKR('${okr.id}','${pkr.id}')">✕</button>
           ` : (Auth.getPermissionForPKR(pkr.id) !== 'view' ? `<button class="btn btn-ghost btn-sm" style="color:#0ea5e9" onclick="openSharePKR('${okr.id}','${pkr.id}')">🔗 Compartir</button>` : '')}
         </td>
-      </tr > `);
+      </tr>`);
 
       pkr.tkrs.forEach(tkr => {
         const tp = Calc.tkrProgress(tkr);
-        rows.push(`< tr style = "background:#fafafa" class="child-of-${pkr.id}" ondragover = "allowDropKA(event)" ondrop = "dropKA(event, '${tkr.id}', null)" >
+        rows.push(`<tr style="background:#fafafa" class="child-of-${pkr.id}" ondragover="allowDropKA(event)" ondrop="dropKA(event, '${tkr.id}', null)">
           <td style="padding:9px 8px 9px 50px;color:var(--text-4);font-size:12px">↳
             <span style="font-size:9.5px;font-weight:800;letter-spacing:.04em;color:#10b981;background:#d1fae5;padding:2px 7px;border-radius:100px;margin-left:4px">KR Táctico</span>
           </td>
@@ -5844,11 +5844,11 @@ function renderManage(container) {
             <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteTKR('${pkr.id}','${tkr.id}')">✕</button>
             ` : ''}
           </td>
-        </tr > `);
+        </tr>`);
 
         tkr.kas.forEach(ka => {
           const dot = Utils.statusColor[ka.status] || '#94a3b8';
-          rows.push(`< tr style = "background:#fff;cursor:grab" class="child-of-${pkr.id} ka-row" draggable = "true" ondragstart = "dragKA(event, '${tkr.id}', '${ka.id}')" ondragover = "allowDropKA(event)" ondrop = "dropKA(event, '${tkr.id}', '${ka.id}')" ondragend = "this.style.opacity='1'" >
+          rows.push(`<tr style="background:#fff;cursor:grab" class="child-of-${pkr.id} ka-row" draggable="true" ondragstart="dragKA(event, '${tkr.id}', '${ka.id}')" ondragover="allowDropKA(event)" ondrop="dropKA(event, '${tkr.id}', '${ka.id}')" ondragend="this.style.opacity='1'">
             <td style="padding:8px 8px 8px 70px;font-size:11px">
               <span style="font-size:9px;font-weight:800;letter-spacing:.04em;color:#f59e0b;background:#fef9c3;padding:2px 7px;border-radius:100px">Key Action</span>
             </td>
@@ -5870,11 +5870,11 @@ function renderManage(container) {
               <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteKA('${tkr.id}','${ka.id}')">✕</button>
               ` : ''}
             </td>
-          </tr > `);
+          </tr>`);
         });
 
         // Indicadores row (meta vs actual inline)
-        rows.push(`< tr style = "background:#fdf8f0;border-top:1px dashed #fde68a" class="child-of-${pkr.id}" >
+        rows.push(`<tr style="background:#fdf8f0;border-top:1px dashed #fde68a" class="child-of-${pkr.id}">
           <td style="padding:7px 8px 7px 90px;font-size:10px">
             <span style="font-size:9px;font-weight:800;letter-spacing:.04em;color:#92400e;background:#fef3c7;padding:2px 7px;border-radius:100px">Indicadores</span>
           </td>
@@ -5891,7 +5891,7 @@ function renderManage(container) {
             <button class="btn btn-ghost btn-sm" onclick="openIndicadorEdit('${pkr.id}','${tkr.id}')">✎ Editar</button>
             ` : ''}
           </td>
-        </tr > `);
+        </tr>`);
       });
     });
   });
@@ -5899,7 +5899,7 @@ function renderManage(container) {
   // ── Creation toolbar ──────────────────────────
   const isAdmin = AppState.currentUser.role === 'admin';
   const toolbar = `
-  < div style = "display:flex;gap:8px;flex-wrap:wrap;align-items:center" >
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     <span style="font-size:11.5px;font-weight:700;color:var(--text-3);margin-right:4px">+ Agregar:</span>
       ${isAdmin ? `
       <button class="btn btn-sm" style="background:#eef2ff;color:#4f46e5;font-weight:700" onclick="openNewOKR()">
@@ -5919,16 +5919,16 @@ function renderManage(container) {
       <button class="btn btn-sm" style="background:#fff7ed;color:#c2410c;font-weight:700" onclick="openNewIndicador()">
         ◎ Indicadores / Metas
       </button>
-    </div > `;
+    </div>`;
 
   container.innerHTML = `
-  < div class="section-header" >
+  <div class="section-header">
       <div>
         <div class="section-title">Gestión de OKRs</div>
         <div class="section-sub">Árbol completo con 5 niveles · Crear, editar y eliminar elementos</div>
       </div>
       <button class="btn btn-primary btn-sm" onclick="openNewCheckin()">+ Check-in</button>
-    </div >
+    </div>
 
   <div class="card">
     <div class="card-header" style="flex-wrap:wrap;gap:12px">
@@ -5960,12 +5960,12 @@ function kaStatusClass(s) {
 function openNewOKR() {
   const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#06b6d4', '#8b5cf6', '#ef4444'];
   const colorBtns = COLORS.map((c, i) =>
-    `< button type = "button" onclick = "this.parentElement.querySelectorAll('button').forEach(b=>b.style.outline='none');this.style.outline='3px solid #000';document.getElementById('okr-color').value='${c}'"
-style = "width:26px;height:26px;border-radius:50%;background:${c};border:none;cursor:pointer;${i === 0 ? 'outline:3px solid #000' : ''}" ></button > `
+    `<button type="button" onclick="this.parentElement.querySelectorAll('button').forEach(b=>b.style.outline='none');this.style.outline='3px solid #000';document.getElementById('okr-color').value='${c}'"
+style="width:26px;height:26px;border-radius:50%;background:${c};border:none;cursor:pointer;${i === 0 ? 'outline:3px solid #000' : ''}"></button>`
   ).join('');
   Modal.open('Nuevo OKR Estratégico', `
-  < div class="form-group" ><label class="form-label">Nombre del OKR</label>
-      <textarea class="form-control" id="okr-name" rows="3" placeholder="Ej: Desplegar el Modelo Ean Virtual 2.0 en las regiones priorizadas…"></textarea></div >
+  <div class="form-group"><label class="form-label">Nombre del OKR</label>
+      <textarea class="form-control" id="okr-name" rows="3" placeholder="Ej: Desplegar el Modelo Ean Virtual 2.0 en las regiones priorizadas…"></textarea></div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Horizonte</label>
         <select class="form-control" id="okr-horizon"><option>anual</option><option>semestral</option><option>trimestral</option></select></div>
